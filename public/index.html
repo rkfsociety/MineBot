@@ -17,14 +17,18 @@
       --chat: #58a6ff;
     }
     * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+    }
     body {
       margin: 0;
       font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
-      min-height: 100vh;
+      min-height: 0;
       display: flex;
       flex-direction: column;
+      overflow: hidden; /* скролл только внутри log/debug */
     }
     header {
       display: flex;
@@ -84,6 +88,7 @@
       margin: 0 auto;
       padding: 1rem;
       gap: 1rem;
+      overflow: hidden; /* не даём странице скроллиться */
     }
     .panel {
       border: 1px solid var(--border);
@@ -182,7 +187,7 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      flex: 1;
+      flex: 1 1 auto;
     }
     .log-head {
       padding: 0.5rem 0.75rem;
