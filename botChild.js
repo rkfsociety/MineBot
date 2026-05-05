@@ -78,7 +78,9 @@ function mapVersionToProtocol(v) {
   // поэтому маппим на известный protocol id (как в FishingBot).
   const s = v == null ? '' : String(v).trim()
   if (!s) return v
-  if (/^26\.1(?:\.\d+)?$/.test(s)) return 775
+  // ВНИМАНИЕ: числовой protocolVersion не всегда поддерживается напрямую в mineflayer,
+  // поэтому здесь возвращаем строку и делаем fallback при создании бота.
+  if (/^26\.1(?:\.\d+)?$/.test(s)) return s
   return v
 }
 
@@ -164,16 +166,51 @@ async function start(payload) {
     }
   }
 
-  // Если версия задана вручную строкой, которая не поддерживается как алиас — маппим на protocolVersion.
+  // Если версия задана вручную строкой, которая не поддерживается как алиас — подготовим варианты.
   resolvedVersion = mapVersionToProtocol(resolvedVersion)
 
-  bot = mineflayer.createBot({
-    host: currentCfg.host,
-    port: currentCfg.port,
-    username: currentCfg.username,
-    version: resolvedVersion,
-    auth: 'offline',
-  })
+  function shouldFallbackUnsupportedVersion(e) {
+    const msg = formatAny(e)
+    return /unsupported protocol version/i.test(msg) || /unknown version/i.test(msg)
+  }
+
+  function tryCreateBot(ver) {
+    return mineflayer.createBot({
+      host: currentCfg.host,
+      port: currentCfg.port,
+      username: currentCfg.username,
+      version: ver,
+      auth: 'offline',
+    })
+  }
+
+  // Для 26.1.x: сначала пробуем как есть; если библиотека не знает алиас — fallback на 1.21.2
+  // (протокол совместим с 775, как в FishingBot).
+  const candidates = []
+  if (resolvedVersion !== false) candidates.push(resolvedVersion)
+  if (typeof resolvedVersion === 'string' && /^26\.1(?:\.\d+)?$/.test(resolvedVersion)) {
+    candidates.push('1.21.2')
+  }
+  if (!candidates.length) candidates.push(false)
+
+  let lastErr = null
+  for (const ver of candidates) {
+    try {
+      bot = tryCreateBot(ver)
+      if (ver !== resolvedVersion) {
+        log('warn', `Версия "${resolvedVersion}" не поддержана библиотекой, использую "${ver}"`)
+        setStatus({ version: String(ver) })
+      }
+      lastErr = null
+      break
+    } catch (e) {
+      lastErr = e
+      if (!shouldFallbackUnsupportedVersion(e)) break
+    }
+  }
+  if (!bot) {
+    throw lastErr instanceof Error ? lastErr : new Error(formatAny(lastErr))
+  }
 
   // Таймаут на подключение: если не дошли до login/spawn, завершаем процесс,
   // чтобы UI не висел в "подключение" бесконечно.
