@@ -10,6 +10,16 @@ let runnerProc = null
 
 const PANEL_URL = process.env.PANEL_URL || 'http://127.0.0.1:3847/home'
 
+function safeAppendLog(line) {
+  try {
+    const dir = app.getPath('userData')
+    fs.mkdirSync(path.join(dir, 'logs'), { recursive: true })
+    const fp = path.join(dir, 'logs', 'app.log')
+    const msg = `[${new Date().toISOString()}] ${line}\r\n`
+    fs.appendFileSync(fp, msg, 'utf8')
+  } catch {}
+}
+
 function startRunner() {
   if (runnerProc) return
   const runnerPath = path.join(__dirname, 'runner.js')
@@ -17,6 +27,7 @@ function startRunner() {
   try {
     fs.mkdirSync(dataDir, { recursive: true })
   } catch {}
+  safeAppendLog(`Starting runner: ${runnerPath}`)
   runnerProc = spawn(process.execPath, [runnerPath], {
     stdio: 'ignore',
     windowsHide: true,
@@ -28,11 +39,13 @@ function startRunner() {
     },
   })
   runnerProc.on('exit', () => {
+    safeAppendLog('Runner exited')
     runnerProc = null
   })
 }
 
 async function createWindow() {
+  safeAppendLog(`MineBot starting. exe=${process.execPath}`)
   startRunner()
 
   mainWindow = new BrowserWindow({
@@ -53,11 +66,13 @@ async function createWindow() {
   await new Promise((r) => setTimeout(r, 700))
 
   try {
+    safeAppendLog(`Loading panel URL: ${PANEL_URL}`)
     await mainWindow.loadURL(PANEL_URL)
   } catch (e) {
+    safeAppendLog(`Failed to load panel: ${e instanceof Error ? e.stack || e.message : String(e)}`)
     dialog.showErrorBox(
       'MineBot',
-      'Не удалось открыть панель. Проверьте, что порты 3847/3848 свободны.\n\n' +
+      'Не удалось открыть панель.\n\nЛог: %APPDATA%\\MineBot\\logs\\app.log\n\n' +
         String(e && e.message ? e.message : e),
     )
   }
@@ -85,5 +100,13 @@ app.on('window-all-closed', () => {
     if (runnerProc) runnerProc.kill()
   } catch {}
   app.quit()
+})
+
+process.on('uncaughtException', (e) => {
+  safeAppendLog(`uncaughtException: ${e && e.stack ? e.stack : String(e)}`)
+})
+
+process.on('unhandledRejection', (e) => {
+  safeAppendLog(`unhandledRejection: ${e && e.stack ? e.stack : String(e)}`)
 })
 

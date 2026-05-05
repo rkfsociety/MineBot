@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node runner.js",
     "start:exe": "electron .",
-    "dist": "electron-packager . MineBot --platform=win32 --arch=x64 --out=dist --overwrite --asar --prune=true"
+    "dist": "electron-packager . MineBot --platform=win32 --arch=x64 --out=dist --overwrite --asar --prune=true",
+    "dist:zip": "powershell -NoProfile -Command \"Remove-Item -Force -ErrorAction SilentlyContinue dist\\\\MineBot-win32-x64.zip; Compress-Archive -Path dist\\\\MineBot-win32-x64\\\\* -DestinationPath dist\\\\MineBot-win32-x64.zip\""
   },
   "engines": {
     "node": ">=18"
