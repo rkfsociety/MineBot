@@ -1,0 +1,3 @@
+[submodule "vendor/fishingbot"]
+	path = vendor/fishingbot
+	url = https://github.com/rkfsociety/FishingBot
