@@ -226,7 +226,22 @@ Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/rkfsociety/MineBot/a
 Expand-Archive -Force -Path $zip -DestinationPath $tmp
 Move-Item -Force (Join-Path $tmp "MineBot-main") $appNew
 
-# Останавливаем наши процессы (панель+бот), затем заменяем app и запускаем runner.
+# Останавливаем ВСЕ наши процессы (runner/panel/bot), иначе runner может поднять старую панель.
+$needles = @('runner.js','panelServer.js','botService.js','botChild.js')
+try {
+  $procs = Get-CimInstance Win32_Process | Where-Object {
+    $_.Name -eq 'node.exe' -and $_.CommandLine -and ($_.CommandLine -like ('*' + $appDir + '*'))
+  }
+  foreach ($pr in $procs) {
+    $cmd = [string]$pr.CommandLine
+    $hit = $false
+    foreach ($n in $needles) { if ($cmd -like ('*' + $n + '*')) { $hit = $true } }
+    if (-not $hit) { continue }
+    try { Stop-Process -Id ([int]$pr.ProcessId) -Force } catch {}
+  }
+} catch {}
+
+# Доп. страховка: если что-то ещё слушает порты, прибьём по PID.
 $ports = @(3847,3848)
 foreach ($pt in $ports) {
   $lines = (netstat -ano | Select-String (':' + $pt) | Select-String 'LISTENING')
@@ -235,7 +250,7 @@ foreach ($pt in $ports) {
     if ($p -match '^\\d+$') { try { Stop-Process -Id ([int]$p) -Force } catch {} }
   }
 }
-Start-Sleep -Milliseconds 700
+Start-Sleep -Milliseconds 900
 
 try { if (Test-Path $appDir) { Remove-Item -Recurse -Force $appDir } } catch {}
 Move-Item -Force $appNew $appDir
