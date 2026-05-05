@@ -5,10 +5,6 @@ description = "MineBot desktop (Tauri)"
 authors = ["rkfsociety"]
 edition = "2021"
 
-[lib]
-name = "minebot_lib"
-crate-type = ["cdylib", "rlib"]
-
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
