@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MineBot</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #3fb950;
+      --warn: #d29922;
+      --err: #f85149;
+      --chat: #58a6ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.85rem 1.25rem;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .pill.ok { color: var(--accent); border-color: rgba(63, 185, 80, 0.35); }
+    .pill.wait { color: var(--warn); border-color: rgba(210, 153, 34, 0.35); }
+    .pill.off { color: var(--muted); }
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-rows: 1fr auto;
+      min-height: 0;
+      max-width: 960px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 1rem;
+      gap: 1rem;
+    }
+    .log-wrap {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+      min-height: 280px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .log-head {
+      padding: 0.5rem 0.75rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    #log {
+      flex: 1;
+      margin: 0;
+      padding: 0.65rem 0.75rem;
+      overflow-y: auto;
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      font-size: 0.8rem;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .line { margin: 0 0 0.35rem; }
+    .line.info { color: var(--text); }
+    .line.warn { color: var(--warn); }
+    .line.error { color: var(--err); }
+    .line.chat { color: var(--chat); }
+    .chat-bar {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .chat-bar input {
+      flex: 1;
+      padding: 0.55rem 0.75rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      font-size: 0.9rem;
+    }
+    .chat-bar input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    button {
+      padding: 0.55rem 1rem;
+      border-radius: 8px;
+      border: 1px solid rgba(63, 185, 80, 0.45);
+      background: rgba(63, 185, 80, 0.12);
+      color: var(--accent);
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    button:hover { background: rgba(63, 185, 80, 0.2); }
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .hint { font-size: 0.75rem; color: var(--muted); margin-top: 0.35rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>MineBot</h1>
+    <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;justify-content:flex-end;">
+      <span id="pill" class="pill off">нет данных</span>
+      <div class="meta" id="meta"></div>
+    </div>
+  </header>
+  <main>
+    <div class="log-wrap">
+      <div class="log-head">Лог</div>
+      <div id="log"></div>
+    </div>
+    <div>
+      <form class="chat-bar" id="chatform">
+        <input id="msg" type="text" autocomplete="off" placeholder="Сообщение в чат Minecraft…" />
+        <button type="submit" id="send">Отправить</button>
+      </form>
+      <p class="hint">Команды с слэшем тоже можно отправить (например <code>/help</code>).</p>
+    </div>
+  </main>
+  <script>
+    const logEl = document.getElementById('log')
+    const pill = document.getElementById('pill')
+    const meta = document.getElementById('meta')
+    const form = document.getElementById('chatform')
+    const input = document.getElementById('msg')
+    const btn = document.getElementById('send')
+
+    const MAX_LINES = 500
+    function appendLine(level, message) {
+      const div = document.createElement('div')
+      div.className = 'line ' + (level || 'info')
+      div.textContent = message
+      logEl.appendChild(div)
+      while (logEl.childElementCount > MAX_LINES) logEl.removeChild(logEl.firstChild)
+      logEl.scrollTop = logEl.scrollHeight
+    }
+
+    function renderStatus(s) {
+      const host = s.host != null ? s.host : '—'
+      const port = s.port != null ? s.port : '—'
+      const user = s.username != null ? s.username : '—'
+      const ver = s.version != null ? s.version : '—'
+      meta.textContent = host + ':' + port + ' · ' + user + ' · MC ' + ver
+
+      if (s.spawned) {
+        pill.className = 'pill ok'
+        pill.textContent = 'в мире'
+      } else if (s.connected) {
+        pill.className = 'pill wait'
+        pill.textContent = 'вход…'
+      } else {
+        pill.className = 'pill off'
+        pill.textContent = 'нет соединения'
+      }
+    }
+
+    const es = new EventSource('/api/stream')
+    es.addEventListener('log', (ev) => {
+      try {
+        const d = JSON.parse(ev.data)
+        appendLine(d.level, d.message)
+      } catch (_) {}
+    })
+    es.addEventListener('status', (ev) => {
+      try {
+        renderStatus(JSON.parse(ev.data))
+      } catch (_) {}
+    })
+    es.onerror = () => appendLine('warn', '[UI] Потеряна связь с панелью, перезагрузите страницу')
+
+    fetch('/api/status').then(r => r.json()).then(renderStatus).catch(() => {})
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault()
+      const text = input.value.trim()
+      if (!text) return
+      btn.disabled = true
+      try {
+        const r = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        })
+        const j = await r.json().catch(() => ({}))
+        if (!r.ok) appendLine('error', j.error || ('Ошибка ' + r.status))
+        else input.value = ''
+      } catch (err) {
+        appendLine('error', String(err))
+      } finally {
+        btn.disabled = false
+        input.focus()
+      }
+    })
+  </script>
+</body>
+</html>
