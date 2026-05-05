@@ -247,6 +247,7 @@
     <h1>MineBot <span id="appver" style="color: var(--muted); font-weight: 600; font-size: 0.85rem;"></span></h1>
     <div class="top-actions">
       <button type="button" id="topUpdate" class="secondary">Обновить</button>
+      <button type="button" id="topDebug" class="secondary">Дебаг</button>
       <button type="button" id="topRepair" class="secondary">Починить</button>
       <button type="button" id="topRestartPanel" class="secondary">Перезапуск панели</button>
       <button type="button" id="topRestartBot" class="secondary">Перезапуск бота</button>
@@ -318,6 +319,18 @@
       </form>
       <p class="hint">Команды с слэшем тоже можно отправить (например <code>/help</code>).</p>
     </div>
+    <section class="panel" id="debugPanel" style="display:none;">
+      <h2>Дебаг</h2>
+      <div class="actions" style="margin-top:0;">
+        <div class="left">
+          <button type="button" id="debugCopy" class="secondary">Скопировать</button>
+          <button type="button" id="debugRefresh" class="secondary">Обновить</button>
+          <button type="button" id="debugClose" class="secondary">Закрыть</button>
+        </div>
+        <div class="small">Отправь этот блок мне — я пойму, что происходит</div>
+      </div>
+      <pre id="debugText" style="margin:0.6rem 0 0; padding:0.65rem 0.75rem; border:1px solid var(--border); border-radius:8px; background:var(--bg); overflow:auto; max-height:340px;"></pre>
+    </section>
   </main>
   <script>
     const BOT_API_DEFAULT = 'http://127.0.0.1:3848'
@@ -328,9 +341,15 @@
     const meta = document.getElementById('meta')
     const appverEl = document.getElementById('appver')
     const topUpdateBtn = document.getElementById('topUpdate')
+    const topDebugBtn = document.getElementById('topDebug')
     const topRepairBtn = document.getElementById('topRepair')
     const topRestartPanelBtn = document.getElementById('topRestartPanel')
     const topRestartBotBtn = document.getElementById('topRestartBot')
+    const debugPanel = document.getElementById('debugPanel')
+    const debugText = document.getElementById('debugText')
+    const debugCopyBtn = document.getElementById('debugCopy')
+    const debugRefreshBtn = document.getElementById('debugRefresh')
+    const debugCloseBtn = document.getElementById('debugClose')
     const form = document.getElementById('chatform')
     const input = document.getElementById('msg')
     const btn = document.getElementById('send')
@@ -568,6 +587,38 @@
       } finally {
         // если обновление прошло — панель уйдёт в рестарт, кнопку не трогаем
         setTimeout(checkUpdate, 1500)
+      }
+    })
+
+    async function loadDebug() {
+      const out = { ts: new Date().toISOString() }
+      try {
+        out.panel = await fetch('/api/debug', { cache: 'no-store' }).then(r => r.json())
+      } catch (e) {
+        out.panel = { ok: false, error: String(e && e.message ? e.message : e) }
+      }
+      try {
+        out.botService = await fetch(BOT_API_BASE + '/api/debug', { cache: 'no-store' }).then(r => r.json())
+      } catch (e) {
+        out.botService = { ok: false, error: String(e && e.message ? e.message : e) }
+      }
+      debugText.textContent = JSON.stringify(out, null, 2)
+      return out
+    }
+
+    topDebugBtn.addEventListener('click', async () => {
+      debugPanel.style.display = ''
+      await loadDebug()
+      debugText.scrollTop = 0
+    })
+    debugRefreshBtn.addEventListener('click', () => loadDebug())
+    debugCloseBtn.addEventListener('click', () => { debugPanel.style.display = 'none' })
+    debugCopyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(debugText.textContent || '')
+        appendLine('info', '[UI] Дебаг скопирован в буфер')
+      } catch (e) {
+        appendLine('warn', '[UI] Не смог скопировать (права браузера). Просто выдели и скопируй вручную.')
       }
     })
 

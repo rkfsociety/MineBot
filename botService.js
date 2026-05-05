@@ -12,6 +12,8 @@ const { getSettingsPath, getRuntimeDir, getLogsDir } = require('./lib/paths')
 const SETTINGS_PATH = getSettingsPath()
 const RUNTIME_DIR = getRuntimeDir()
 const LOGS_DIR = getLogsDir()
+let botStartedAt = null
+let lastBotError = null
 
 function normalizeVersion(v) {
   const raw = v == null ? '' : String(v).trim()
@@ -249,6 +251,8 @@ function writeFishingBotConfig(cfg) {
 function startBotProcess() {
   if (botProc) return
   setBotState({ connecting: true, connected: false, spawned: false })
+  botStartedAt = Date.now()
+  lastBotError = null
 
   try {
     ;(async () => {
@@ -289,16 +293,67 @@ function startBotProcess() {
         setBotState({ connecting: false, connected: false, spawned: false })
       })
     })().catch((e) => {
+      lastBotError = e instanceof Error ? (e.stack || e.message) : String(e)
       log('error', `Не смог запустить Java-бота: ${e instanceof Error ? e.message : String(e)}`)
       botProc = null
       setBotState({ connecting: false, connected: false, spawned: false })
     })
   } catch (e) {
+    lastBotError = e instanceof Error ? (e.stack || e.message) : String(e)
     log('error', `Не смог запустить Java-бота: ${e instanceof Error ? e.message : String(e)}`)
     botProc = null
     setBotState({ connecting: false, connected: false, spawned: false })
   }
 }
+
+function javaVersion() {
+  try {
+    const { spawnSync } = require('child_process')
+    const r = spawnSync('java', ['-version'], { windowsHide: true, encoding: 'utf8' })
+    // java -version пишет в stderr
+    const out = String((r.stderr || r.stdout || '')).trim()
+    return out.split(/\r?\n/)[0] || null
+  } catch {
+    return null
+  }
+}
+
+app.get('/api/debug', (_req, res) => {
+  let jar = null
+  try {
+    const jarPath = path.join(RUNTIME_DIR, 'FishingBot.jar')
+    if (fs.existsSync(jarPath)) {
+      const st = fs.statSync(jarPath)
+      jar = { path: jarPath, size: st.size, mtimeMs: st.mtimeMs }
+    }
+  } catch {}
+
+  res.json({
+    ok: true,
+    now: Date.now(),
+    engine: 'fishingbot-java',
+    node: process.version,
+    java: javaVersion(),
+    runtimeDir: RUNTIME_DIR,
+    logsDir: LOGS_DIR,
+    bot: {
+      running: Boolean(botProc),
+      pid: botProc && botProc.pid ? botProc.pid : null,
+      startedAt: botStartedAt,
+      lastError: lastBotError,
+      state: botState,
+      config: {
+        host: currentCfg.host,
+        port: currentCfg.port,
+        username: currentCfg.username,
+        version: currentCfg.version === false ? 'AUTOMATIC' : String(currentCfg.version),
+        registerFirst: Boolean(currentCfg.registerFirst),
+        hasPassword: Boolean(currentCfg.password),
+      },
+      jar,
+    },
+  })
+})
 
 /** HTTP API */
 const app = express()

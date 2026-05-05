@@ -160,6 +160,21 @@ app.get('/api/version', (_req, res) => {
   res.json({ version: readLocalVersion(), dataDir: getDataDir() })
 })
 
+app.get('/api/debug', (_req, res) => {
+  res.json({
+    ok: true,
+    now: Date.now(),
+    panel: {
+      version: readLocalVersion(),
+      appDir: __dirname,
+      publicDir,
+      dataDir: getDataDir(),
+      node: process.version,
+      platform: process.platform,
+    },
+  })
+})
+
 app.get('/api/update/check', async (_req, res) => {
   const localV = readLocalVersion()
   try {
