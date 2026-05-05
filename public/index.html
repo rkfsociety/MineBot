@@ -278,7 +278,6 @@
           <div class="left">
             <button type="submit" id="save" class="secondary">Сохранить</button>
             <button type="button" id="connect">Подключиться</button>
-            <button type="button" id="restart" class="secondary">Перезапуск бота</button>
             <button type="button" id="disconnect" class="danger">Отключиться</button>
           </div>
           <div class="small" id="cfgHint">—</div>
@@ -322,7 +321,6 @@
     const passEl = document.getElementById('pass')
     const saveBtn = document.getElementById('save')
     const connectBtn = document.getElementById('connect')
-    const restartBtn = document.getElementById('restart')
     const disconnectBtn = document.getElementById('disconnect')
     const cfgHint = document.getElementById('cfgHint')
 
@@ -392,7 +390,6 @@
       input.disabled = !canChat
       btn.disabled = !canChat
       connectBtn.disabled = Boolean(running || s.connected || connecting)
-      restartBtn.disabled = !Boolean(running || s.connected || connecting || s.spawned)
       disconnectBtn.disabled = !Boolean(running || s.connected || connecting || s.spawned)
 
       topRestartBotBtn.disabled = !Boolean(running || s.connected || connecting || s.spawned)
@@ -573,17 +570,6 @@
         appendLine('error', '[UI] ' + String(err && err.message ? err.message : err))
       } finally {
         disconnectBtn.disabled = false
-      }
-    })
-
-    restartBtn.addEventListener('click', async () => {
-      restartBtn.disabled = true
-      try {
-        await postJson(BOT_API_BASE + '/api/restart', {})
-      } catch (err) {
-        appendLine('error', '[UI] ' + String(err && err.message ? err.message : err))
-      } finally {
-        restartBtn.disabled = false
       }
     })
 
