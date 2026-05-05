@@ -231,7 +231,8 @@ function downloadToFile(url, filePath, headers) {
 }
 
 async function ensureFishingBotJar() {
-  const jarPath = path.join(RUNTIME_DIR, 'FishingBot.jar')
+  // Храним локально под брендом MineBot, но скачиваем из релизов FishingBot.
+  const jarPath = path.join(RUNTIME_DIR, 'MineBot.jar')
   try {
     if (fs.existsSync(jarPath) && fs.statSync(jarPath).size > 1_000_000) return jarPath
     if (fs.existsSync(jarPath) && fs.statSync(jarPath).size < 1_000_000) {
@@ -261,8 +262,8 @@ async function ensureFishingBotJar() {
 }
 
 function writeFishingBotConfig(cfg) {
-  const cfgPath = path.join(RUNTIME_DIR, 'fishingbot-config.json')
-  const logsDir = path.join(LOGS_DIR, 'FishingBot')
+  const cfgPath = path.join(RUNTIME_DIR, 'minebot-config.json')
+  const logsDir = path.join(LOGS_DIR, 'MineBot')
   fs.mkdirSync(logsDir, { recursive: true })
 
   const versionStr = cfg.version === false ? 'AUTOMATIC' : String(cfg.version)
@@ -290,6 +291,10 @@ function writeFishingBotConfig(cfg) {
     logs: {
       'log-packets': false,
     },
+    misc: {
+      // Нам не нужна проверка удочки — отключаем спам "Удочка не найдена..."
+      'disable-rod-checking': true,
+    },
   }
   fs.writeFileSync(cfgPath, JSON.stringify(j, null, 2), 'utf8')
   return { cfgPath, logsDir }
@@ -308,10 +313,16 @@ function startBotProcess() {
   let connectedAt = 0
   let playReadyAt = 0
   const commandDelayMs = parseInt(process.env.FB_COMMAND_DELAY_MS || '1200', 10)
+  let pendingCmdTimer = null
   function clearAuthTimer() {
     if (!authTimer) return
     try { clearTimeout(authTimer) } catch {}
     authTimer = null
+  }
+  function clearPendingCmd() {
+    if (!pendingCmdTimer) return
+    try { clearTimeout(pendingCmdTimer) } catch {}
+    pendingCmdTimer = null
   }
   function sendLine(line) {
     if (!botProc || !botProc.stdin) return false
@@ -324,13 +335,15 @@ function startBotProcess() {
   }
 
   function sendLineWithDelay(line) {
+    clearPendingCmd()
     const now = Date.now()
     // Важно: чат-команды можно отправлять только после перехода в PLAY.
     const base = playReadyAt || connectedAt || botStartedAt || now
     const delay = Number.isFinite(commandDelayMs) && commandDelayMs > 0 ? commandDelayMs : 0
     const wait = Math.max(0, base + delay - now)
     if (wait <= 0) return sendLine(line)
-    setTimeout(() => {
+    pendingCmdTimer = setTimeout(() => {
+      pendingCmdTimer = null
       if (!botProc) return
       sendLine(line)
     }, wait)
@@ -346,9 +359,9 @@ function startBotProcess() {
     if (!playReadyAt) return
     const loginTpl = authCfg.loginCommand || '/login {password}'
     const regTpl = authCfg.registerCommand || '/register {password} {password}'
-    const remembered = getRemembered()
-    if (remembered && remembered.registered) authStage = 'need_login'
-    else authStage = 'need_register'
+    // ВАЖНО: ничего не отправляем "по памяти". Ждём явную подсказку в чате:
+    // сервер сам пишет что нужно выполнить (/register или /login).
+    if (authStage !== 'need_register' && authStage !== 'need_login') return
 
     // чуть подождём, чтобы бот успел подключиться/войти в лобби
     clearAuthTimer()
@@ -387,7 +400,10 @@ function startBotProcess() {
         for (const ln of lines) {
           const line = ln.trim()
           if (!line) continue
-          log('info', line)
+          // Убираем лишний шум и "переименовываем" движок в логах.
+          if (line.includes('Удочка не найдена') || line.includes('No rod has been found')) continue
+          const branded = line.replaceAll('FishingBot', 'MineBot')
+          log('info', branded)
           if (!fishingBotVersion) {
             const m = line.match(/Using FishingBot v([0-9.]+)/i)
             if (m) fishingBotVersion = m[1]
@@ -407,13 +423,14 @@ function startBotProcess() {
             maybeAuth()
           }
 
-          // Явный детект известной проблемы FishingBot на 26.1.x: нельзя отправлять чат-команды.
+          // Явный детект известной проблемы движка на 26.1.x: нельзя отправлять чат-команды.
           if (line.includes('InvalidPacketException') || line.includes('PacketOutUnsignedChatCommand') || line.includes('ID пакета PacketOutUnsignedChatCommand')) {
             lastBotError =
-              'FishingBot не смог отправить чат-команду (PacketOutUnsignedChatCommand). ' +
-              'Чаще всего это происходит, если команда отправлена слишком рано (до PLAY), или это баг FishingBot.'
+              'Движок не смог отправить чат-команду (PacketOutUnsignedChatCommand). ' +
+              'Чаще всего это происходит, если команда отправлена слишком рано (до PLAY), или это баг движка.'
             authDisabledByEngine = true
             clearAuthTimer()
+            clearPendingCmd()
             log('error', 'Авто-авторизация отключена из-за ошибки отправки пакета. Попробуй увеличить задержку FB_COMMAND_DELAY_MS.')
           }
 
@@ -441,7 +458,11 @@ function startBotProcess() {
             l.includes('авторизация успеш')
 
           if (needReg && authStage !== 'need_register') {
+            // Сервер явно просит /register → сбрасываем remembered.registered, чтобы /login не ушёл первым.
+            setRemembered({ registered: false })
             authStage = 'need_register'
+            clearAuthTimer()
+            clearPendingCmd()
             maybeAuth()
           }
           if (alreadyReg || regOk) {
@@ -450,6 +471,7 @@ function startBotProcess() {
             // после регистрации часто нужно /login
             if (currentCfg.password) {
               clearAuthTimer()
+              clearPendingCmd()
               authTimer = setTimeout(() => {
                 const loginTpl = authCfg.loginCommand || '/login {password}'
                 log('warn', 'Авто-авторизация: пробую /login')
@@ -459,6 +481,8 @@ function startBotProcess() {
           }
           if (needLogin && authStage !== 'need_login' && authStage !== 'logged_in') {
             authStage = 'need_login'
+            clearAuthTimer()
+            clearPendingCmd()
             maybeAuth()
           }
           if (loginOk) {
@@ -471,14 +495,14 @@ function startBotProcess() {
 
       botProc.on('exit', (code, signal) => {
         clearAuthTimer()
+        clearPendingCmd()
         log('warn', `Бот остановлен (code=${code}, signal=${signal || 'none'})`)
         lastBotExit = { at: Date.now(), code, signal: signal || 'none' }
         botProc = null
         setBotState({ connecting: false, connected: false, spawned: false })
       })
 
-      // Начальная попытка авторизации сразу после старта.
-      maybeAuth()
+      // Никаких команд на старте: ждём подсказку в чате (/register или /login).
     })().catch((e) => {
       clearAuthTimer()
       lastBotError = e instanceof Error ? (e.stack || e.message) : String(e)
@@ -527,7 +551,7 @@ app.get('/api/status', (_req, res) => {
 app.get('/api/debug', (_req, res) => {
   let jar = null
   try {
-    const jarPath = path.join(RUNTIME_DIR, 'FishingBot.jar')
+    const jarPath = path.join(RUNTIME_DIR, 'MineBot.jar')
     if (fs.existsSync(jarPath)) {
       const st = fs.statSync(jarPath)
       jar = { path: jarPath, size: st.size, mtimeMs: st.mtimeMs }
@@ -537,7 +561,7 @@ app.get('/api/debug', (_req, res) => {
   res.json({
     ok: true,
     now: Date.now(),
-    engine: 'fishingbot-java',
+    engine: 'minebot-java',
     fishingBotVersion,
     node: process.version,
     java: javaVersion(),
