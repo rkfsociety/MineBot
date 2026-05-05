@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MineBot — требования</title>
+    <style>
+      :root {
+        --bg: #0d1117;
+        --panel: #161b22;
+        --border: #30363d;
+        --text: #e6edf3;
+        --muted: #8b949e;
+        --accent: #3fb950;
+        --warn: #d29922;
+        --err: #f85149;
+        --link: #58a6ff;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: var(--bg);
+        color: var(--text);
+        font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+      }
+      .card {
+        width: min(860px, calc(100vw - 32px));
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 18px 18px 14px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 16px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+      p { margin: 8px 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+      .list { margin-top: 12px; display: grid; gap: 10px; }
+      .item {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px;
+        background: rgba(255,255,255,0.02);
+      }
+      .title {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 10px;
+        font-weight: 800;
+        font-size: 13px;
+      }
+      .badge {
+        font-size: 12px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        border: 1px solid rgba(248, 81, 73, 0.5);
+        color: var(--err);
+        background: rgba(248, 81, 73, 0.10);
+        font-weight: 800;
+      }
+      a { color: var(--link); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; color: var(--text); }
+      .footer { margin-top: 12px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+      button {
+        padding: 8px 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(63, 185, 80, 0.45);
+        background: rgba(63, 185, 80, 0.12);
+        color: var(--accent);
+        font-weight: 700;
+        cursor: pointer;
+      }
+      button:hover { background: rgba(63, 185, 80, 0.2); }
+      .hint { font-size: 12px; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Не хватает компонентов для запуска MineBot</h1>
+      <p>
+        MineBot запускает панель и бота как отдельные процессы на Node.js и показывает панель в окне (WebView2).
+        Установи недостающие компоненты и перезапусти MineBot.
+      </p>
+
+      <div class="list" id="list"></div>
+
+      <div class="footer">
+        <button type="button" id="reload">Проверить снова</button>
+        <span class="hint">Подсказка: после установки Node.js открой новое окно/перезапусти MineBot.</span>
+      </div>
+    </div>
+
+    <script>
+      function parseMissing() {
+        const h = String(location.hash || '')
+        const m = h.match(/missing=([^&]+)/)
+        if (!m) return ['node']
+        return decodeURIComponent(m[1]).split(',').map(s => s.trim()).filter(Boolean)
+      }
+
+      const items = {
+        node: {
+          name: 'Node.js (LTS)',
+          text: 'Нужен для запуска панели и botService (runner.js). После установки проверь, что команда ' +
+            '`node --version` работает в PowerShell.',
+          links: [
+            { label: 'Скачать Node.js LTS', url: 'https://nodejs.org/en/download' }
+          ]
+        },
+        webview2: {
+          name: 'Microsoft Edge WebView2 Runtime',
+          text: 'Нужен для отображения интерфейса в окне приложения (Tauri/Windows).',
+          links: [
+            { label: 'Скачать WebView2 Runtime', url: 'https://developer.microsoft.com/microsoft-edge/webview2/' }
+          ]
+        }
+      }
+
+      const missing = parseMissing()
+      const list = document.getElementById('list')
+      list.innerHTML = ''
+
+      for (const key of missing) {
+        const it = items[key] || { name: key, text: 'Компонент не найден.', links: [] }
+        const div = document.createElement('div')
+        div.className = 'item'
+        const links = (it.links || []).map(l => `<a href="${l.url}" target="_blank" rel="noreferrer">${l.label}</a>`).join(' · ')
+        div.innerHTML = `
+          <div class="title">
+            <span>${it.name}</span>
+            <span class="badge">не найдено</span>
+          </div>
+          <p>${it.text}</p>
+          <p>${links}</p>
+        `
+        list.appendChild(div)
+      }
+
+      document.getElementById('reload').addEventListener('click', () => location.reload())
+    </script>
+  </body>
+</html>
+

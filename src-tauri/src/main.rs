@@ -47,6 +47,25 @@ fn ps_exec(script: &str) -> bool {
     .unwrap_or(false)
 }
 
+fn has_node() -> bool {
+  Command::new("node")
+    .arg("--version")
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::null())
+    .status()
+    .map(|s| s.success())
+    .unwrap_or(false)
+}
+
+fn requirements_hash(missing: &[&str]) -> String {
+  // Передаём список через hash, чтобы не плодить IPC.
+  // Пример: #missing=node,webview2
+  let mut s = String::from("#missing=");
+  s.push_str(&missing.join(","));
+  s
+}
+
 fn ensure_app_latest(app_root: &Path) {
   // Минимальная логика: если app/ отсутствует — качаем main.zip и распаковываем.
   // Дальше обновлением будет заниматься панель/раннер (в AppData), без перекомпиляции Tauri.
@@ -108,26 +127,43 @@ fn main() {
   let app_root = appdata_dir();
   ensure_dir(&app_root);
 
-  // Стартуем/обновляем Node-часть и поднимаем runner как можно раньше.
-  // Это позволяет редко перекомпилировать Tauri exe: вся логика обновляется в AppData.
-  {
-    let app_root_bg = app_root.clone();
-    thread::spawn(move || {
-      ensure_app_latest(&app_root_bg);
-      start_runner(&app_root_bg);
-
-      // Дадим runner пару секунд поднять панель, чтобы splash быстрее переключился.
-      let start = Instant::now();
-      while start.elapsed() < Duration::from_secs(6) {
-        if is_listening(3847) {
-          break;
-        }
-        thread::sleep(Duration::from_millis(200));
-      }
-    });
-  }
+  let node_ok = has_node();
 
   tauri::Builder::default()
+    .setup(move |app| {
+      let win = app.get_webview_window("main");
+
+      // Минимальная проверка требований: без node мы не сможем запустить runner.js.
+      if !node_ok {
+        if let Some(w) = win {
+          let hash = requirements_hash(&["node", "webview2"]);
+          let _ = w.eval(&format!(
+            "location.replace('requirements.html{}')",
+            hash.replace('\'', "%27")
+          ));
+        }
+        return Ok(());
+      }
+
+      // Стартуем/обновляем Node-часть и поднимаем runner как можно раньше.
+      // Это позволяет редко перекомпилировать Tauri exe: вся логика обновляется в AppData.
+      let app_root_bg = app_root.clone();
+      thread::spawn(move || {
+        ensure_app_latest(&app_root_bg);
+        start_runner(&app_root_bg);
+
+        // Дадим runner пару секунд поднять панель, чтобы splash быстрее переключился.
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_secs(6) {
+          if is_listening(3847) {
+            break;
+          }
+          thread::sleep(Duration::from_millis(200));
+        }
+      });
+
+      Ok(())
+    })
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 }
