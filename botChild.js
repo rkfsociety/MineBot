@@ -18,6 +18,15 @@ let authDelayMs = 2000
 let currentCfg = null
 let stopping = false
 let everSpawned = false
+let connectTimer = null
+
+function clearConnectTimer() {
+  if (!connectTimer) return
+  try {
+    clearTimeout(connectTimer)
+  } catch {}
+  connectTimer = null
+}
 
 function send(msg) {
   try {
@@ -84,6 +93,7 @@ function teardown() {
 async function start(payload) {
   stopping = false
   everSpawned = false
+  clearConnectTimer()
   authCfg = payload && payload.authCfg ? payload.authCfg : {}
   authDelayMs = payload && payload.authDelayMs != null ? payload.authDelayMs : 2000
 
@@ -151,6 +161,19 @@ async function start(payload) {
     auth: 'offline',
   })
 
+  // Таймаут на подключение: если не дошли до login/spawn, завершаем процесс,
+  // чтобы UI не висел в "подключение" бесконечно.
+  const connectTimeoutMs = parseInt(process.env.MC_CONNECT_TIMEOUT_MS || '20000', 10)
+  if (Number.isFinite(connectTimeoutMs) && connectTimeoutMs > 1000) {
+    connectTimer = setTimeout(() => {
+      if (stopping || everSpawned) return
+      log('error', `Таймаут подключения (${connectTimeoutMs}мс). Отключаюсь.`)
+      setStatus({ connecting: false, connected: false, spawned: false })
+      teardown()
+      process.exit(1)
+    }, connectTimeoutMs)
+  }
+
   let authSent = false
 
   function sendAuthCommands() {
@@ -172,6 +195,7 @@ async function start(payload) {
 
   bot.on('login', () => {
     if (!bot) return
+    clearConnectTimer()
     setStatus({
       connecting: false,
       connected: true,
@@ -182,6 +206,7 @@ async function start(payload) {
 
   bot.on('spawn', () => {
     everSpawned = true
+    clearConnectTimer()
     setStatus({ spawned: true })
     log('info', 'Персонаж в мире')
     if (authSent) return
@@ -200,6 +225,7 @@ async function start(payload) {
   })
 
   bot.on('kicked', (reason) => {
+    clearConnectTimer()
     setStatus({ connecting: false, connected: false, spawned: false })
     const msg = formatAny(reason)
     log('error', `Кик: ${msg || 'неизвестная причина'}`)
@@ -217,6 +243,7 @@ async function start(payload) {
   })
 
   bot.on('error', (err) => {
+    clearConnectTimer()
     setStatus({ connecting: false })
     log('error', `Ошибка: ${formatAny(err)}`)
     // Аналогично: если умерли во время подключения — завершаем процесс бота.
@@ -225,6 +252,7 @@ async function start(payload) {
   })
 
   bot.on('end', () => {
+    clearConnectTimer()
     setStatus({ connecting: false, connected: false, spawned: false })
     log('warn', 'Соединение закрыто')
     teardown()
