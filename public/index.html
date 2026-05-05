@@ -527,6 +527,28 @@
         if (!r.ok || !j.ok) throw new Error(j.message || j.error || ('Ошибка ' + r.status))
         if (j.updated) appendLine('info', '[UI] Обновление установлено. Перезапускаюсь...')
         else appendLine('info', '[UI] Обновление не требуется.')
+
+        // Панель сейчас может быть убита updater-скриптом и поднята заново. Ждём её и перезагружаем окно.
+        if (j.updated) {
+          const startedAt = Date.now()
+          const waitMs = 20000
+          const tickMs = 450
+          const timer = setInterval(async () => {
+            if (Date.now() - startedAt > waitMs) {
+              clearInterval(timer)
+              appendLine('warn', '[UI] После обновления панель долго не поднимается. Попробуйте F5.')
+              topUpdateBtn.disabled = false
+              return
+            }
+            try {
+              const rr = await fetch('/home', { cache: 'no-store' })
+              if (rr.ok) {
+                clearInterval(timer)
+                location.reload()
+              }
+            } catch (_) {}
+          }, tickMs)
+        }
       } catch (err) {
         appendLine('error', '[UI] ' + String(err && err.message ? err.message : err))
         topUpdateBtn.disabled = false

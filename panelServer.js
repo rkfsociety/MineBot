@@ -243,7 +243,9 @@ Move-Item -Force $appNew $appDir
 try { Remove-Item -Force $zip } catch {}
 try { if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp } } catch {}
 
-Start-Process -WindowStyle Hidden -WorkingDirectory $appDir -FilePath "node" -ArgumentList "runner.js" -Env @{"MINEBOT_DATA_DIR"=$dataDir}
+# Запускаем runner, передав MINEBOT_DATA_DIR через переменную окружения.
+$env:MINEBOT_DATA_DIR = $dataDir
+Start-Process -WindowStyle Hidden -WorkingDirectory $appDir -FilePath "node" -ArgumentList "runner.js"
 `
     fs.writeFileSync(ps1, script, 'utf8')
 
