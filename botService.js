@@ -304,6 +304,8 @@ function startBotProcess() {
   let authStage = 'unknown' // unknown | need_register | registered | need_login | logged_in
   let authTimer = null
   let authDisabledByEngine = false
+  let connectedAt = 0
+  const commandDelayMs = parseInt(process.env.FB_COMMAND_DELAY_MS || '1200', 10)
   function clearAuthTimer() {
     if (!authTimer) return
     try { clearTimeout(authTimer) } catch {}
@@ -317,6 +319,19 @@ function startBotProcess() {
     } catch {
       return false
     }
+  }
+
+  function sendLineWithDelay(line) {
+    const now = Date.now()
+    const base = connectedAt || botStartedAt || now
+    const delay = Number.isFinite(commandDelayMs) && commandDelayMs > 0 ? commandDelayMs : 0
+    const wait = Math.max(0, base + delay - now)
+    if (wait <= 0) return sendLine(line)
+    setTimeout(() => {
+      if (!botProc) return
+      sendLine(line)
+    }, wait)
+    return true
   }
   function fmt(tpl) {
     return String(tpl).replaceAll('{password}', currentCfg.password || '')
@@ -349,10 +364,10 @@ function startBotProcess() {
       if (!botProc) return
       if (authStage === 'need_register') {
         log('warn', 'Авто-авторизация: пробую /register')
-        sendLine(fmt(regTpl))
+        sendLineWithDelay(fmt(regTpl))
       } else if (authStage === 'need_login') {
         log('warn', 'Авто-авторизация: пробую /login')
-        sendLine(fmt(loginTpl))
+        sendLineWithDelay(fmt(loginTpl))
       }
     }, 1200)
   }
@@ -386,7 +401,10 @@ function startBotProcess() {
             if (m) fishingBotVersion = m[1]
           }
           // Простейшая эвристика статуса.
-          if (/has connected|connected/i.test(line)) setBotState({ connecting: false, connected: true })
+          if (/has connected|connected/i.test(line)) {
+            if (!connectedAt) connectedAt = Date.now()
+            setBotState({ connecting: false, connected: true })
+          }
           if (/spawn|in game|joined/i.test(line)) setBotState({ spawned: true })
           if (/kicked|disconnect|disconnected/i.test(line)) setBotState({ connecting: false, connected: false, spawned: false })
 
@@ -440,7 +458,7 @@ function startBotProcess() {
               authTimer = setTimeout(() => {
                 const loginTpl = authCfg.loginCommand || '/login {password}'
                 log('warn', 'Авто-авторизация: пробую /login')
-                sendLine(fmt(loginTpl))
+                sendLineWithDelay(fmt(loginTpl))
               }, 900)
             }
           }
