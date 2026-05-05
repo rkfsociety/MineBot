@@ -14,6 +14,7 @@ const RUNTIME_DIR = getRuntimeDir()
 const LOGS_DIR = getLogsDir()
 let botStartedAt = null
 let lastBotError = null
+let authRemember = {}
 
 function normalizeVersion(v) {
   const raw = v == null ? '' : String(v).trim()
@@ -42,6 +43,7 @@ function writeLocalSettings(cfg) {
     version: cfg.version === false ? 'auto' : String(cfg.version),
     password: cfg.password || '',
     registerFirst: Boolean(cfg.registerFirst),
+    authRemember: cfg.authRemember && typeof cfg.authRemember === 'object' ? cfg.authRemember : {},
   }
   const tmp = `${SETTINGS_PATH}.tmp`
   fs.writeFileSync(tmp, JSON.stringify(safe, null, 2), 'utf8')
@@ -96,6 +98,26 @@ let currentCfg = {
         process.env.MC_REGISTER === 'true' ||
         process.env.MC_REGISTER === 'yes' ||
         Boolean(authCfg.registerOnFirstJoin),
+}
+authRemember = (local && local.authRemember && typeof local.authRemember === 'object') ? local.authRemember : {}
+
+function rememberKey() {
+  return `${currentCfg.host}:${currentCfg.port}:${currentCfg.username}`
+}
+
+function getRemembered() {
+  const k = rememberKey()
+  const v = authRemember && authRemember[k]
+  return v && typeof v === 'object' ? v : null
+}
+
+function setRemembered(patch) {
+  const k = rememberKey()
+  const prev = getRemembered() || {}
+  authRemember[k] = { ...prev, ...patch, t: Date.now() }
+  try {
+    writeLocalSettings({ ...currentCfg, authRemember })
+  } catch {}
 }
 
 function statusSnapshot() {
@@ -242,13 +264,9 @@ function writeFishingBotConfig(cfg) {
   fs.mkdirSync(logsDir, { recursive: true })
 
   const versionStr = cfg.version === false ? 'AUTOMATIC' : String(cfg.version)
+  // Авто-логин/регистрация теперь управляется из botService по сообщениям чата,
+  // чтобы после первого /register в следующий раз выполнять /login автоматически.
   const startTexts = []
-  if (cfg.password) {
-    const loginTpl = authCfg.loginCommand || '/login {password}'
-    const regTpl = authCfg.registerCommand || '/register {password} {password}'
-    const t = cfg.registerFirst ? regTpl : loginTpl
-    startTexts.push(String(t).replaceAll('{password}', cfg.password))
-  }
 
   const j = {
     server: {
@@ -281,6 +299,48 @@ function startBotProcess() {
   botStartedAt = Date.now()
   lastBotError = null
 
+  // state machine for auth commands
+  let authStage = 'unknown' // unknown | need_register | registered | need_login | logged_in
+  let authTimer = null
+  function clearAuthTimer() {
+    if (!authTimer) return
+    try { clearTimeout(authTimer) } catch {}
+    authTimer = null
+  }
+  function sendLine(line) {
+    if (!botProc || !botProc.stdin) return false
+    try {
+      botProc.stdin.write(String(line) + '\n')
+      return true
+    } catch {
+      return false
+    }
+  }
+  function fmt(tpl) {
+    return String(tpl).replaceAll('{password}', currentCfg.password || '')
+  }
+  function maybeAuth() {
+    if (!currentCfg.password) return
+    const loginTpl = authCfg.loginCommand || '/login {password}'
+    const regTpl = authCfg.registerCommand || '/register {password} {password}'
+    const remembered = getRemembered()
+    if (remembered && remembered.registered) authStage = 'need_login'
+    else authStage = 'need_register'
+
+    // чуть подождём, чтобы бот успел подключиться/войти в лобби
+    clearAuthTimer()
+    authTimer = setTimeout(() => {
+      if (!botProc) return
+      if (authStage === 'need_register') {
+        log('warn', 'Авто-авторизация: пробую /register')
+        sendLine(fmt(regTpl))
+      } else if (authStage === 'need_login') {
+        log('warn', 'Авто-авторизация: пробую /login')
+        sendLine(fmt(loginTpl))
+      }
+    }, 1200)
+  }
+
   try {
     ;(async () => {
       const jarPath = await ensureFishingBotJar()
@@ -309,23 +369,77 @@ function startBotProcess() {
           if (/has connected|connected/i.test(line)) setBotState({ connecting: false, connected: true })
           if (/spawn|in game|joined/i.test(line)) setBotState({ spawned: true })
           if (/kicked|disconnect|disconnected/i.test(line)) setBotState({ connecting: false, connected: false, spawned: false })
+
+          // Детект подсказок авторизации из чата/сервера.
+          const l = line.toLowerCase()
+          const needReg =
+            l.includes('/register') ||
+            l.includes('register') && (l.includes('please') || l.includes('need') || l.includes('required')) ||
+            l.includes('нужно зарегистр') ||
+            l.includes('зарегистриру')
+          const alreadyReg =
+            l.includes('already registered') ||
+            l.includes('уже зарегистр')
+          const regOk =
+            l.includes('registered') && (l.includes('success') || l.includes('successfully') || l.includes('успеш'))
+          const needLogin =
+            l.includes('/login') ||
+            l.includes('please login') ||
+            l.includes('нужно войти') ||
+            l.includes('авториз')
+          const loginOk =
+            l.includes('logged in') ||
+            l.includes('successfully logged') ||
+            l.includes('вход выполнен') ||
+            l.includes('авторизация успеш')
+
+          if (needReg && authStage !== 'need_register') {
+            authStage = 'need_register'
+            maybeAuth()
+          }
+          if (alreadyReg || regOk) {
+            authStage = 'registered'
+            setRemembered({ registered: true })
+            // после регистрации часто нужно /login
+            if (currentCfg.password) {
+              clearAuthTimer()
+              authTimer = setTimeout(() => {
+                const loginTpl = authCfg.loginCommand || '/login {password}'
+                log('warn', 'Авто-авторизация: пробую /login')
+                sendLine(fmt(loginTpl))
+              }, 900)
+            }
+          }
+          if (needLogin && authStage !== 'need_login' && authStage !== 'logged_in') {
+            authStage = 'need_login'
+            maybeAuth()
+          }
+          if (loginOk) {
+            authStage = 'logged_in'
+          }
         }
       }
       botProc.stdout.on('data', onData)
       botProc.stderr.on('data', (c) => onData(String(c)))
 
       botProc.on('exit', (code, signal) => {
+        clearAuthTimer()
         log('warn', `Бот остановлен (code=${code}, signal=${signal || 'none'})`)
         botProc = null
         setBotState({ connecting: false, connected: false, spawned: false })
       })
+
+      // Начальная попытка авторизации сразу после старта.
+      maybeAuth()
     })().catch((e) => {
+      clearAuthTimer()
       lastBotError = e instanceof Error ? (e.stack || e.message) : String(e)
       log('error', `Не смог запустить Java-бота: ${e instanceof Error ? e.message : String(e)}`)
       botProc = null
       setBotState({ connecting: false, connected: false, spawned: false })
     })
   } catch (e) {
+    clearAuthTimer()
     lastBotError = e instanceof Error ? (e.stack || e.message) : String(e)
     log('error', `Не смог запустить Java-бота: ${e instanceof Error ? e.message : String(e)}`)
     botProc = null
