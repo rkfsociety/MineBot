@@ -3,5 +3,6 @@ node_modules/
 auth.local.js
 settings.local.json
 dist/
+dist-tauri/
 *.log
 .DS_Store
