@@ -1,6 +1,14 @@
 'use strict'
 
 const mineflayer = require('mineflayer')
+let mcproto = null
+try {
+  // mineflayer использует minecraft-protocol; берём его для ping/детекта версии.
+  // eslint-disable-next-line global-require
+  mcproto = require('minecraft-protocol')
+} catch {
+  mcproto = null
+}
 
 /** @type {import('mineflayer').Bot | null} */
 let bot = null
@@ -108,11 +116,38 @@ async function start(payload) {
     })`,
   )
 
+  // Если выбрано auto — пробуем заранее определить версию/протокол через ping.
+  // Это повышает шанс успешного коннекта к прокси (например Velocity), где авто-детект иногда ломается.
+  let resolvedVersion = currentCfg.version
+  if (resolvedVersion === false && mcproto && typeof mcproto.ping === 'function') {
+    try {
+      const r = await Promise.race([
+        mcproto.ping({ host: currentCfg.host, port: currentCfg.port }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('ping_timeout')), 2500)),
+      ])
+      const name = r && r.version && r.version.name ? String(r.version.name) : ''
+      const proto = r && r.version && r.version.protocol != null ? Number(r.version.protocol) : null
+      if (name) {
+        resolvedVersion = name
+      } else if (Number.isFinite(proto)) {
+        resolvedVersion = proto
+      }
+      if (resolvedVersion !== false) {
+        log('info', `Определена версия сервера: ${resolvedVersion}`)
+        setStatus({
+          version: typeof resolvedVersion === 'number' ? String(resolvedVersion) : String(resolvedVersion),
+        })
+      }
+    } catch (e) {
+      log('warn', `Не удалось определить версию сервера (ping): ${formatAny(e)}`)
+    }
+  }
+
   bot = mineflayer.createBot({
     host: currentCfg.host,
     port: currentCfg.port,
     username: currentCfg.username,
-    version: currentCfg.version,
+    version: resolvedVersion,
     auth: 'offline',
   })
 
