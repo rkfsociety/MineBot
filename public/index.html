@@ -223,7 +223,7 @@
 </head>
 <body>
   <header>
-    <h1>MineBot</h1>
+    <h1>MineBot <span id="appver" style="color: var(--muted); font-weight: 600; font-size: 0.85rem;"></span></h1>
     <div class="top-actions">
       <button type="button" id="topUpdate" class="secondary">Обновить</button>
       <button type="button" id="topRepair" class="secondary">Починить</button>
@@ -304,6 +304,7 @@
     const logEl = document.getElementById('log')
     const pill = document.getElementById('pill')
     const meta = document.getElementById('meta')
+    const appverEl = document.getElementById('appver')
     const topUpdateBtn = document.getElementById('topUpdate')
     const topRepairBtn = document.getElementById('topRepair')
     const topRestartPanelBtn = document.getElementById('topRestartPanel')
@@ -456,17 +457,17 @@
             topUpdateBtn.dataset.mode = 'app'
             return
           }
-          topUpdateBtn.disabled = true
-          topUpdateBtn.textContent = `Актуально (${j.local})`
+          topUpdateBtn.disabled = false
+          topUpdateBtn.textContent = 'Проверить обновления'
           topUpdateBtn.dataset.mode = 'none'
           return
         }
         topUpdateBtn.disabled = true
-        topUpdateBtn.textContent = 'Обновить'
+        topUpdateBtn.textContent = 'Проверить обновления'
         topUpdateBtn.dataset.mode = 'none'
       } catch (_) {
-        topUpdateBtn.disabled = true
-        topUpdateBtn.textContent = 'Обновить'
+        topUpdateBtn.disabled = false
+        topUpdateBtn.textContent = 'Проверить обновления'
         topUpdateBtn.dataset.mode = 'none'
       }
     }
@@ -475,10 +476,27 @@
     checkUpdate()
     setInterval(checkUpdate, 60_000)
 
+    // Версия панели рядом с названием.
+    ;(async () => {
+      try {
+        const r = await fetch('/api/version', { cache: 'no-store' })
+        const j = await r.json().catch(() => ({}))
+        const v = j && j.version ? String(j.version) : ''
+        appverEl.textContent = v ? ('v' + v) : ''
+      } catch (_) {
+        appverEl.textContent = ''
+      }
+    })()
+
     topUpdateBtn.addEventListener('click', async () => {
       topUpdateBtn.disabled = true
       appendLine('warn', '[UI] Обновление кода (панель+бот) из GitHub...')
       try {
+        // Если обновления нет — просто перепроверим.
+        if ((topUpdateBtn.dataset.mode || 'none') === 'none') {
+          await checkUpdate()
+          return
+        }
         const r = await fetch('/api/app/update/apply', { method: 'POST' })
         const j = await r.json().catch(() => ({}))
         if (!r.ok || !j.ok) throw new Error(j.message || j.error || ('Ошибка ' + r.status))
