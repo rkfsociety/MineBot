@@ -158,6 +158,11 @@
       background: rgba(88, 166, 255, 0.12);
       color: rgba(88, 166, 255, 0.95);
     }
+    .success {
+      border-color: rgba(63, 185, 80, 0.45);
+      background: rgba(63, 185, 80, 0.12);
+      color: rgba(63, 185, 80, 1);
+    }
     .danger {
       border-color: rgba(248, 81, 73, 0.55);
       background: rgba(248, 81, 73, 0.12);
@@ -480,20 +485,28 @@
             topUpdateBtn.disabled = false
             topUpdateBtn.textContent = `Обновить код (${j.local} → ${j.remote})`
             topUpdateBtn.dataset.mode = 'app'
+            topUpdateBtn.classList.add('success')
+            topUpdateBtn.classList.remove('secondary')
             return
           }
           topUpdateBtn.disabled = false
           topUpdateBtn.textContent = 'Проверить обновления'
           topUpdateBtn.dataset.mode = 'none'
+          topUpdateBtn.classList.remove('success')
+          topUpdateBtn.classList.add('secondary')
           return
         }
         topUpdateBtn.disabled = true
         topUpdateBtn.textContent = 'Проверить обновления'
         topUpdateBtn.dataset.mode = 'none'
+        topUpdateBtn.classList.remove('success')
+        topUpdateBtn.classList.add('secondary')
       } catch (_) {
         topUpdateBtn.disabled = false
         topUpdateBtn.textContent = 'Проверить обновления'
         topUpdateBtn.dataset.mode = 'none'
+        topUpdateBtn.classList.remove('success')
+        topUpdateBtn.classList.add('secondary')
       }
     }
 
