@@ -318,6 +318,23 @@ function javaVersion() {
   }
 }
 
+/** HTTP API */
+const app = express()
+app.use(express.json({ limit: '16kb' }))
+
+// Разрешим запросы с панели на другом порту (локально).
+app.use((_req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+  if (_req.method === 'OPTIONS') return res.sendStatus(204)
+  next()
+})
+
+app.get('/api/status', (_req, res) => {
+  res.json(statusSnapshot())
+})
+
 app.get('/api/debug', (_req, res) => {
   let jar = null
   try {
@@ -353,23 +370,6 @@ app.get('/api/debug', (_req, res) => {
       jar,
     },
   })
-})
-
-/** HTTP API */
-const app = express()
-app.use(express.json({ limit: '16kb' }))
-
-// Разрешим запросы с панели на другом порту (локально).
-app.use((_req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
-  if (_req.method === 'OPTIONS') return res.sendStatus(204)
-  next()
-})
-
-app.get('/api/status', (_req, res) => {
-  res.json(statusSnapshot())
 })
 
 app.get('/api/config', (_req, res) => {

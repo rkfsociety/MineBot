@@ -598,7 +598,14 @@
         out.panel = { ok: false, error: String(e && e.message ? e.message : e) }
       }
       try {
-        out.botService = await fetch(BOT_API_BASE + '/api/debug', { cache: 'no-store' }).then(r => r.json())
+        const r = await fetch(BOT_API_BASE + '/api/debug', { cache: 'no-store' })
+        const ct = (r.headers.get('content-type') || '').toLowerCase()
+        if (!r.ok) throw new Error('HTTP ' + r.status)
+        if (!ct.includes('application/json')) {
+          const text = await r.text().catch(() => '')
+          throw new Error('non_json_response: ' + (text ? text.slice(0, 80) : ct || 'unknown'))
+        }
+        out.botService = await r.json()
       } catch (e) {
         out.botService = { ok: false, error: String(e && e.message ? e.message : e) }
       }
