@@ -14,6 +14,7 @@ const RUNTIME_DIR = getRuntimeDir()
 const LOGS_DIR = getLogsDir()
 let botStartedAt = null
 let lastBotError = null
+let fishingBotVersion = null
 let authRemember = {}
 
 function normalizeVersion(v) {
@@ -302,6 +303,7 @@ function startBotProcess() {
   // state machine for auth commands
   let authStage = 'unknown' // unknown | need_register | registered | need_login | logged_in
   let authTimer = null
+  let authDisabledByEngine = false
   function clearAuthTimer() {
     if (!authTimer) return
     try { clearTimeout(authTimer) } catch {}
@@ -321,6 +323,20 @@ function startBotProcess() {
   }
   function maybeAuth() {
     if (!currentCfg.password) return
+    // В FishingBot v2.13.x для протокола 26.1.x сейчас ломается отправка чат-команд:
+    // PacketOutUnsignedChatCommand не зарегистрирован → падает командный executor.
+    // Пока не появится фикc в FishingBot, не пытаемся автологиниться на 26.1.x.
+    if (String(currentCfg.version || '').startsWith('26.1')) {
+      if (!authDisabledByEngine) {
+        authDisabledByEngine = true
+        log(
+          'error',
+          'Авто-авторизация отключена: FishingBot для 26.1.x сейчас не умеет отправлять чат-команды ' +
+            '(PacketOutUnsignedChatCommand не зарегистрирован). Нужно обновление FishingBot.',
+        )
+      }
+      return
+    }
     const loginTpl = authCfg.loginCommand || '/login {password}'
     const regTpl = authCfg.registerCommand || '/register {password} {password}'
     const remembered = getRemembered()
@@ -365,10 +381,28 @@ function startBotProcess() {
           const line = ln.trim()
           if (!line) continue
           log('info', line)
+          if (!fishingBotVersion) {
+            const m = line.match(/Using FishingBot v([0-9.]+)/i)
+            if (m) fishingBotVersion = m[1]
+          }
           // Простейшая эвристика статуса.
           if (/has connected|connected/i.test(line)) setBotState({ connecting: false, connected: true })
           if (/spawn|in game|joined/i.test(line)) setBotState({ spawned: true })
           if (/kicked|disconnect|disconnected/i.test(line)) setBotState({ connecting: false, connected: false, spawned: false })
+
+          // Явный детект известной проблемы FishingBot на 26.1.x: нельзя отправлять чат-команды.
+          if (
+            line.includes('InvalidPacketException') ||
+            line.includes('PacketOutUnsignedChatCommand') ||
+            line.includes('ID пакета PacketOutUnsignedChatCommand')
+          ) {
+            lastBotError =
+              'FishingBot не поддерживает отправку чат-команд на 26.1.x (PacketOutUnsignedChatCommand). ' +
+              'Нужно обновление FishingBot.'
+            // Чтобы не спамить попытками /register /login и не оставлять "подключение", просто отключаем автологин.
+            authDisabledByEngine = true
+            clearAuthTimer()
+          }
 
           // Детект подсказок авторизации из чата/сервера.
           const l = line.toLowerCase()
@@ -490,6 +524,7 @@ app.get('/api/debug', (_req, res) => {
     ok: true,
     now: Date.now(),
     engine: 'fishingbot-java',
+    fishingBotVersion,
     node: process.version,
     java: javaVersion(),
     runtimeDir: RUNTIME_DIR,
