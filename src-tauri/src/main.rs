@@ -5,6 +5,7 @@ use tauri::Manager;
 use std::{
   env,
   fs,
+  io::Write,
   net::TcpStream,
   path::{Path, PathBuf},
   process::{Command, Stdio},
@@ -60,12 +61,32 @@ fn has_node() -> bool {
     .unwrap_or(false)
 }
 
+fn has_npm() -> bool {
+  Command::new("npm")
+    .arg("--version")
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::null())
+    .status()
+    .map(|s| s.success())
+    .unwrap_or(false)
+}
+
 fn requirements_hash(missing: &[&str]) -> String {
   // Передаём список через hash, чтобы не плодить IPC.
   // Пример: #missing=node,webview2
   let mut s = String::from("#missing=");
   s.push_str(&missing.join(","));
   s
+}
+
+fn append_log(app_root: &Path, line: &str) {
+  let updates = app_root.join("updates");
+  ensure_dir(&updates);
+  let p = updates.join("launcher.log");
+  if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(p) {
+    let _ = writeln!(f, "{}", line);
+  }
 }
 
 fn ensure_app_latest(app_root: &Path) {
@@ -99,7 +120,43 @@ fn ensure_app_latest(app_root: &Path) {
      Remove-Item -Force $zip; \
      if (Test-Path $tmp) {{ Remove-Item -Recurse -Force $tmp }};"
   );
-  let _ = ps_exec(&script);
+  let ok = ps_exec(&script);
+  if !ok {
+    append_log(app_root, "ensure_app_latest: PowerShell download/extract failed");
+  }
+}
+
+fn ensure_node_modules(app_root: &Path) {
+  let app_dir = app_root.join("app");
+  if !app_dir.exists() {
+    append_log(app_root, "ensure_node_modules: app dir missing");
+    return;
+  }
+
+  // Если уже установлено — ничего не делаем.
+  if app_dir.join("node_modules").exists() {
+    return;
+  }
+
+  // Без npm зависимости не установить; панель будет пустой.
+  if !has_npm() {
+    append_log(app_root, "ensure_node_modules: npm not found");
+    return;
+  }
+
+  append_log(app_root, "ensure_node_modules: running npm ci --omit=dev");
+  let st = Command::new("npm")
+    .current_dir(&app_dir)
+    .args(["ci", "--omit=dev"])
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::null())
+    .status();
+  if st.map(|s| s.success()).unwrap_or(false) {
+    append_log(app_root, "ensure_node_modules: npm ci success");
+  } else {
+    append_log(app_root, "ensure_node_modules: npm ci failed");
+  }
 }
 
 fn start_runner(app_root: &Path) {
@@ -130,15 +187,23 @@ fn main() {
   ensure_dir(&app_root);
 
   let node_ok = has_node();
+  let npm_ok = has_npm();
 
   tauri::Builder::default()
     .setup(move |app| {
       let win = app.get_webview_window("main");
 
       // Минимальная проверка требований: без node мы не сможем запустить runner.js.
-      if !node_ok {
+      if !node_ok || !npm_ok {
         if let Some(w) = win {
-          let hash = requirements_hash(&["node", "webview2"]);
+          let mut missing = vec!["webview2"];
+          if !node_ok {
+            missing.push("node");
+          } else if !npm_ok {
+            // Обычно npm ставится вместе с Node, но на практике может отсутствовать.
+            missing.push("npm");
+          }
+          let hash = requirements_hash(&missing);
           let _ = w.eval(&format!(
             "location.replace('requirements.html{}')",
             hash.replace('\'', "%27")
@@ -152,6 +217,7 @@ fn main() {
       let app_root_bg = app_root.clone();
       thread::spawn(move || {
         ensure_app_latest(&app_root_bg);
+        ensure_node_modules(&app_root_bg);
         start_runner(&app_root_bg);
 
         // Дадим runner пару секунд поднять панель, чтобы splash быстрее переключился.
