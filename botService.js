@@ -124,6 +124,14 @@ function setRemembered(patch) {
 
 function statusSnapshot() {
   return {
+    // BotService всегда работает как отдельный сервис.
+    service: {
+      ok: true,
+      engine: 'minebot-java',
+      pid: process.pid,
+      uptimeMs: Math.floor(process.uptime() * 1000),
+      now: Date.now(),
+    },
     host: currentCfg.host,
     port: currentCfg.port,
     username: currentCfg.username,

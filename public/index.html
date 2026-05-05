@@ -461,6 +461,9 @@
       } else if (s.connected) {
         pill.className = 'pill wait'
         pill.textContent = 'вход…'
+      } else if (s && s.service && s.service.ok) {
+        pill.className = 'pill wait'
+        pill.textContent = 'бот готов'
       } else {
         pill.className = 'pill off'
         pill.textContent = 'нет соединения'
