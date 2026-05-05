@@ -9,6 +9,7 @@ let authCfg = {}
 let authDelayMs = 2000
 let currentCfg = null
 let stopping = false
+let everSpawned = false
 
 function send(msg) {
   try {
@@ -74,6 +75,7 @@ function teardown() {
 
 async function start(payload) {
   stopping = false
+  everSpawned = false
   authCfg = payload && payload.authCfg ? payload.authCfg : {}
   authDelayMs = payload && payload.authDelayMs != null ? payload.authDelayMs : 2000
 
@@ -144,6 +146,7 @@ async function start(payload) {
   })
 
   bot.on('spawn', () => {
+    everSpawned = true
     setStatus({ spawned: true })
     log('info', 'Персонаж в мире')
     if (authSent) return
@@ -172,11 +175,18 @@ async function start(payload) {
           'которую пишет сервер (например 26.1.2), вместо auto.',
       )
     }
+    // Если подключение не удалось (не дошли до spawn) — выходим, чтобы botService отметил бота как остановленного.
+    // Это предотвращает "зависание" состояния после неудачного коннекта.
+    teardown()
+    if (!stopping && !everSpawned) process.exit(0)
   })
 
   bot.on('error', (err) => {
     setStatus({ connecting: false })
     log('error', `Ошибка: ${formatAny(err)}`)
+    // Аналогично: если умерли во время подключения — завершаем процесс бота.
+    teardown()
+    if (!stopping && !everSpawned) process.exit(1)
   })
 
   bot.on('end', () => {
@@ -184,6 +194,7 @@ async function start(payload) {
     log('warn', 'Соединение закрыто')
     teardown()
     if (stopping) process.exit(0)
+    if (!everSpawned) process.exit(0)
   })
 }
 
