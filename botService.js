@@ -170,28 +170,50 @@ function fetchJson(url, headers) {
 }
 
 function downloadToFile(url, filePath, headers) {
-  return new Promise((resolve, reject) => {
-    const out = fs.createWriteStream(filePath)
-    https
-      .get(url, { headers }, (res) => {
-        if (res.statusCode && res.statusCode >= 400) {
-          reject(new Error(`HTTP ${res.statusCode}`))
+  function once(u, redirectsLeft) {
+    return new Promise((resolve, reject) => {
+      const out = fs.createWriteStream(filePath)
+      const req = https.get(u, { headers }, (res) => {
+        const code = res.statusCode || 0
+        if (code >= 300 && code < 400 && res.headers && res.headers.location) {
+          // redirect (GitHub assets often redirect to S3)
+          res.resume()
+          out.close(() => {
+            try {
+              fs.unlinkSync(filePath)
+            } catch {}
+            if (redirectsLeft <= 0) return reject(new Error('too_many_redirects'))
+            const next = String(res.headers.location)
+            resolve(once(next, redirectsLeft - 1))
+          })
+          return
+        }
+        if (code >= 400) {
+          reject(new Error(`HTTP ${code}`))
           res.resume()
           return
         }
         res.pipe(out)
         out.on('finish', () => out.close(() => resolve()))
       })
-      .on('error', (e) => {
+      req.on('error', (e) => {
         try { out.close() } catch {}
+        try { fs.unlinkSync(filePath) } catch {}
         reject(e)
       })
-  })
+    })
+  }
+  return once(url, 5)
 }
 
 async function ensureFishingBotJar() {
   const jarPath = path.join(RUNTIME_DIR, 'FishingBot.jar')
-  if (fs.existsSync(jarPath) && fs.statSync(jarPath).size > 1_000_000) return jarPath
+  try {
+    if (fs.existsSync(jarPath) && fs.statSync(jarPath).size > 1_000_000) return jarPath
+    if (fs.existsSync(jarPath) && fs.statSync(jarPath).size < 1_000_000) {
+      try { fs.unlinkSync(jarPath) } catch {}
+    }
+  } catch {}
 
   const rel = await fetchJson('https://api.github.com/repos/MrKinau/FishingBot/releases/latest', {
     'User-Agent': 'MineBot',
@@ -205,6 +227,11 @@ async function ensureFishingBotJar() {
 
   const tmp = jarPath + '.download'
   await downloadToFile(jar.browser_download_url, tmp, { 'User-Agent': 'MineBot' })
+  const st = fs.statSync(tmp)
+  if (!st || st.size < 1_000_000) {
+    try { fs.unlinkSync(tmp) } catch {}
+    throw new Error('download_failed_or_too_small')
+  }
   fs.renameSync(tmp, jarPath)
   return jarPath
 }
