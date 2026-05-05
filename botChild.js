@@ -16,11 +16,27 @@ function send(msg) {
   } catch {}
 }
 
+function formatAny(v) {
+  if (v == null) return ''
+  if (typeof v === 'string') return v
+  if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint') return String(v)
+  if (v instanceof Error) return v.stack || v.message || String(v)
+  try {
+    return JSON.stringify(v)
+  } catch {
+    try {
+      return String(v)
+    } catch {
+      return '[unknown]'
+    }
+  }
+}
+
 function log(level, message) {
   send({
     type: 'log',
     level,
-    message: typeof message === 'string' ? message : String(message),
+    message: formatAny(message),
     t: Date.now(),
   })
 }
@@ -152,12 +168,22 @@ async function start(payload) {
 
   bot.on('kicked', (reason) => {
     setStatus({ connecting: false, connected: false, spawned: false })
-    log('error', `Кик: ${reason}`)
+    const msg = formatAny(reason)
+    log('error', `Кик: ${msg || 'неизвестная причина'}`)
+    // Velocity/Paper иногда возвращает текст с версией сборки (например 26.1.2),
+    // которая не является версией Minecraft (mineflayer ждёт 1.xx.x).
+    if (/Outdated client/i.test(msg) && /\b\d+\.\d+\.\d+\b/.test(msg) && !/\b1\.\d+\.\d+\b/.test(msg)) {
+      log(
+        'warn',
+        'Подсказка: сообщение про версию вида "26.x.x" обычно относится к Paper/сборке. ' +
+          'В панели укажи версию Minecraft (например 1.21.2 или 1.21.1) вместо auto и попробуй снова.',
+      )
+    }
   })
 
   bot.on('error', (err) => {
     setStatus({ connecting: false })
-    log('error', `Ошибка: ${err}`)
+    log('error', `Ошибка: ${formatAny(err)}`)
   })
 
   bot.on('end', () => {
