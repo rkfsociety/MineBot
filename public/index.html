@@ -449,33 +449,19 @@
 
     async function checkUpdate() {
       try {
+        // Обновляем именно AppData-код (панель+бот), exe стараемся не трогать часто.
         const r = await fetch('/api/update/check', { cache: 'no-store' })
         const j = await r.json().catch(() => ({}))
         if (r.ok && j && j.ok) {
           if (j.updateAvailable) {
             topUpdateBtn.disabled = false
-            topUpdateBtn.textContent = `Обновить (${j.local} → ${j.remote})`
-            topUpdateBtn.dataset.mode = 'git'
+            topUpdateBtn.textContent = `Обновить код (${j.local} → ${j.remote})`
+            topUpdateBtn.dataset.mode = 'app'
             return
           }
           topUpdateBtn.disabled = true
           topUpdateBtn.textContent = `Актуально (${j.local})`
           topUpdateBtn.dataset.mode = 'none'
-          return
-        }
-        // Если git-обновление недоступно (например exe), пробуем релизы.
-        const rr = await fetch('/api/update/release/check', { cache: 'no-store' })
-        const jj = await rr.json().catch(() => ({}))
-        if (rr.ok && jj && jj.ok) {
-          if (jj.updateAvailable) {
-            topUpdateBtn.disabled = false
-            topUpdateBtn.textContent = `Обновить (${jj.local} → ${jj.remote})`
-            topUpdateBtn.dataset.mode = 'release'
-          } else {
-            topUpdateBtn.disabled = true
-            topUpdateBtn.textContent = `Актуально (${jj.local})`
-            topUpdateBtn.dataset.mode = 'none'
-          }
           return
         }
         topUpdateBtn.disabled = true
@@ -494,11 +480,9 @@
 
     topUpdateBtn.addEventListener('click', async () => {
       topUpdateBtn.disabled = true
-      appendLine('warn', '[UI] Обновление из GitHub...')
+      appendLine('warn', '[UI] Обновление кода (панель+бот) из GitHub...')
       try {
-        const mode = topUpdateBtn.dataset.mode || 'git'
-        const url = mode === 'release' ? '/api/update/release/apply' : '/api/update/apply'
-        const r = await fetch(url, { method: 'POST' })
+        const r = await fetch('/api/app/update/apply', { method: 'POST' })
         const j = await r.json().catch(() => ({}))
         if (!r.ok || !j.ok) throw new Error(j.message || j.error || ('Ошибка ' + r.status))
         if (j.updated) appendLine('info', '[UI] Обновление установлено. Перезапускаюсь...')

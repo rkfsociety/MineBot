@@ -128,6 +128,25 @@ function downloadToFile(url, filePath, headers) {
   })
 }
 
+function spawnDetachedPwsh(scriptPath) {
+  try {
+    const { spawn } = require('child_process')
+    const p = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath],
+      { detached: true, stdio: 'ignore', windowsHide: true },
+    )
+    p.unref()
+    return true
+  } catch {
+    return false
+  }
+}
+
+function getAppDir() {
+  return __dirname
+}
+
 function parseTagVersion(tag) {
   const raw = String(tag || '').trim()
   const m = raw.match(/v?(\d+\.\d+\.\d+)/)
@@ -158,6 +177,89 @@ app.get('/api/update/check', async (_req, res) => {
     res.status(502).json({
       ok: false,
       local: localV,
+      error: e instanceof Error ? e.message : String(e),
+    })
+  }
+})
+
+// Обновление AppData-кода (панель+бот) без обновления exe:
+// скачиваем zip ветки main, заменяем %APPDATA%\MineBot\app и перезапускаем runner.
+app.post('/api/app/update/apply', async (_req, res) => {
+  if (process.platform !== 'win32') {
+    res.status(400).json({ ok: false, error: 'unsupported_platform' })
+    return
+  }
+
+  const localV = readLocalVersion()
+  let remoteV = null
+  try {
+    const remotePkg = await fetchJson(GITHUB_RAW_PACKAGE_JSON)
+    remoteV = String((remotePkg && remotePkg.version) || '0.0.0')
+    const cmp = cmpSemver(localV, remoteV)
+    if (cmp >= 0) {
+      res.json({ ok: true, updated: false, local: localV, remote: remoteV })
+      return
+    }
+
+    const dataDir = getDataDir()
+    const updatesDir = path.join(dataDir, 'updates')
+    fs.mkdirSync(updatesDir, { recursive: true })
+
+    const ps1 = path.join(updatesDir, 'apply-app-update.ps1')
+    const zip = path.join(updatesDir, `main-${remoteV}.zip`)
+    const tmp = path.join(updatesDir, `app-tmp-${remoteV}`)
+    const appDir = getAppDir()
+    const appNew = path.join(updatesDir, `app-new-${remoteV}`)
+
+    const script = `
+$ErrorActionPreference = 'Stop'
+$zip = "${zip.replace(/"/g, '""')}"
+$tmp = "${tmp.replace(/"/g, '""')}"
+$appNew = "${appNew.replace(/"/g, '""')}"
+$appDir = "${appDir.replace(/"/g, '""')}"
+$dataDir = "${dataDir.replace(/"/g, '""')}"
+
+try { if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp } } catch {}
+try { if (Test-Path $appNew) { Remove-Item -Recurse -Force $appNew } } catch {}
+
+Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/rkfsociety/MineBot/archive/refs/heads/main.zip" -OutFile $zip
+Expand-Archive -Force -Path $zip -DestinationPath $tmp
+Move-Item -Force (Join-Path $tmp "MineBot-main") $appNew
+
+# Останавливаем наши процессы (панель+бот), затем заменяем app и запускаем runner.
+$ports = @(3847,3848)
+foreach ($pt in $ports) {
+  $lines = (netstat -ano | Select-String (':' + $pt) | Select-String 'LISTENING')
+  foreach ($ln in $lines) {
+    $p = ($ln.ToString() -split '\\s+')[-1]
+    if ($p -match '^\\d+$') { try { Stop-Process -Id ([int]$p) -Force } catch {} }
+  }
+}
+Start-Sleep -Milliseconds 700
+
+try { if (Test-Path $appDir) { Remove-Item -Recurse -Force $appDir } } catch {}
+Move-Item -Force $appNew $appDir
+
+try { Remove-Item -Force $zip } catch {}
+try { if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp } } catch {}
+
+Start-Process -WindowStyle Hidden -WorkingDirectory $appDir -FilePath "node" -ArgumentList "runner.js" -Env @{"MINEBOT_DATA_DIR"=$dataDir}
+`
+    fs.writeFileSync(ps1, script, 'utf8')
+
+    const ok = spawnDetachedPwsh(ps1)
+    if (!ok) {
+      res.status(500).json({ ok: false, error: 'spawn_failed' })
+      return
+    }
+
+    res.json({ ok: true, updated: true, localBefore: localV, remote: remoteV })
+    // Процесс панели скоро будет убит скриптом — runner поднимется заново.
+  } catch (e) {
+    res.status(500).json({
+      ok: false,
+      local: localV,
+      remote: remoteV,
       error: e instanceof Error ? e.message : String(e),
     })
   }
