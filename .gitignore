@@ -1,5 +1,7 @@
 node_modules/
 .env
 auth.local.js
+settings.local.json
+dist/
 *.log
 .DS_Store

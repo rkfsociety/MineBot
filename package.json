@@ -3,9 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "description": "Minecraft Java Edition bot (mineflayer)",
-  "main": "index.js",
+  "main": "electronMain.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node runner.js",
+    "start:exe": "electron .",
+    "dist": "electron-packager . MineBot --platform=win32 --arch=x64 --out=dist --overwrite --asar --prune=true"
   },
   "engines": {
     "node": ">=18"
@@ -13,5 +15,14 @@
   "dependencies": {
     "express": "^4.21.2",
     "mineflayer": "^4.37.1"
+  },
+  "devDependencies": {
+    "electron": "^41.5.0",
+    "electron-builder": "^26.8.1",
+    "electron-packager": "^17.1.2"
+  },
+  "build": {
+    "appId": "rkfsociety.minebot",
+    "productName": "MineBot"
   }
 }

@@ -10,9 +10,16 @@ const { exec } = require('child_process')
  * @param {number} opts.port
  * @param {boolean} opts.openBrowser
  * @param {() => import('mineflayer').Bot | null} opts.getBot
+ * @param {() => object} opts.getConfig
+ * @param {(patch: object) => void} opts.setConfig
+ * @param {() => Promise<{ok: boolean, error?: string}>} opts.connect
+ * @param {() => Promise<{ok: boolean, error?: string}>} opts.disconnect
+ * @param {() => Promise<{ok: boolean, error?: string}>} opts.restart
+ * @param {() => Promise<{ok: boolean, error?: string}>} opts.restartPanel
+ * @param {(text: string) => Promise<{ok: boolean, error?: string}>} opts.sendChat
  */
 function createWebUi(opts) {
-  const { host, port, openBrowser, getBot } = opts
+  const { host, port, openBrowser, getConfig, setConfig, connect, disconnect, restart, restartPanel, sendChat } = opts
   const app = express()
   app.use(express.json({ limit: '8kb' }))
 
@@ -50,6 +57,64 @@ function createWebUi(opts) {
     res.json(status)
   })
 
+  app.get('/api/config', (_req, res) => {
+    try {
+      res.json(getConfig())
+    } catch (e) {
+      res.status(500).json({ error: e instanceof Error ? e.message : String(e) })
+    }
+  })
+
+  app.post('/api/config', (req, res) => {
+    const body = req.body && typeof req.body === 'object' ? req.body : {}
+    try {
+      setConfig(body)
+      res.json({ ok: true, config: getConfig() })
+    } catch (e) {
+      res.status(400).json({ error: e instanceof Error ? e.message : String(e) })
+    }
+  })
+
+  app.post('/api/connect', async (_req, res) => {
+    try {
+      const r = await connect()
+      if (!r || !r.ok) res.status(400).json(r || { ok: false })
+      else res.json(r)
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) })
+    }
+  })
+
+  app.post('/api/disconnect', async (_req, res) => {
+    try {
+      const r = await disconnect()
+      if (!r || !r.ok) res.status(400).json(r || { ok: false })
+      else res.json(r)
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) })
+    }
+  })
+
+  app.post('/api/restart', async (_req, res) => {
+    try {
+      const r = await restart()
+      if (!r || !r.ok) res.status(400).json(r || { ok: false })
+      else res.json(r)
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) })
+    }
+  })
+
+  app.post('/api/panel/restart', async (_req, res) => {
+    try {
+      const r = await restartPanel()
+      if (!r || !r.ok) res.status(400).json(r || { ok: false })
+      else res.json(r)
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) })
+    }
+  })
+
   app.get('/api/stream', (_req, res) => {
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
     res.setHeader('Cache-Control', 'no-cache')
@@ -82,19 +147,15 @@ function createWebUi(opts) {
       res.status(400).json({ error: 'Слишком длинное сообщение' })
       return
     }
-    const bot = getBot()
-    if (!bot) {
-      res.status(503).json({ error: 'Бот ещё не создан' })
-      return
-    }
     try {
-      if (!bot.entity) {
-        res.status(503).json({ error: 'Бот не в мире (ждите spawn)' })
-        return
-      }
-      bot.chat(text)
-      log('chat', `→ ${text}`)
-      res.json({ ok: true })
+      Promise.resolve(sendChat(text))
+        .then((r) => {
+          if (!r || !r.ok) res.status(400).json(r || { ok: false })
+          else res.json(r)
+        })
+        .catch((e) => {
+          res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) })
+        })
     } catch (e) {
       res.status(500).json({ error: e instanceof Error ? e.message : String(e) })
     }

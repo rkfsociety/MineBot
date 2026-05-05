@@ -35,6 +35,18 @@
       background: var(--panel);
       border-bottom: 1px solid var(--border);
     }
+    .top-actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+    }
+    .top-actions button {
+      padding: 0.4rem 0.75rem;
+      border-radius: 8px;
+      font-size: 0.8rem;
+    }
     h1 {
       margin: 0;
       font-size: 1.15rem;
@@ -65,7 +77,7 @@
     main {
       flex: 1;
       display: grid;
-      grid-template-rows: 1fr auto;
+      grid-template-rows: auto 1fr auto;
       min-height: 0;
       max-width: 960px;
       width: 100%;
@@ -73,11 +85,79 @@
       padding: 1rem;
       gap: 1rem;
     }
+    .panel {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 0.85rem;
+    }
+    .panel h2 {
+      margin: 0 0 0.65rem;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: 0.01em;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.7fr 1fr 1fr;
+      gap: 0.6rem;
+      align-items: end;
+    }
+    .field label {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin: 0 0 0.25rem;
+    }
+    .field input, .field select {
+      width: 100%;
+      padding: 0.55rem 0.75rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 0.9rem;
+    }
+    .field input:focus, .field select:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-top: 0.65rem;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .actions .left {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .secondary {
+      border-color: rgba(88, 166, 255, 0.45);
+      background: rgba(88, 166, 255, 0.12);
+      color: rgba(88, 166, 255, 0.95);
+    }
+    .danger {
+      border-color: rgba(248, 81, 73, 0.55);
+      background: rgba(248, 81, 73, 0.12);
+      color: rgba(248, 81, 73, 0.95);
+    }
+    .small {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
     .log-wrap {
       border: 1px solid var(--border);
       border-radius: 8px;
       background: var(--panel);
       min-height: 280px;
+      /* важно: разрешаем flex-детям с overflow скроллиться */
+      min-height: 0;
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -90,6 +170,7 @@
     }
     #log {
       flex: 1;
+      min-height: 0; /* иначе блок будет раздувать страницу вместо скролла */
       margin: 0;
       padding: 0.65rem 0.75rem;
       overflow-y: auto;
@@ -143,12 +224,65 @@
 <body>
   <header>
     <h1>MineBot</h1>
-    <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;justify-content:flex-end;">
+    <div class="top-actions">
+      <button type="button" id="topOpenWindow" class="secondary">Окно панели</button>
+      <button type="button" id="topRestartPanel" class="secondary">Перезапуск панели</button>
+      <button type="button" id="topRestartBot" class="secondary">Перезапуск бота</button>
       <span id="pill" class="pill off">нет данных</span>
       <div class="meta" id="meta"></div>
     </div>
   </header>
   <main>
+    <section class="panel">
+      <h2>Подключение</h2>
+      <form id="cfgform">
+        <div class="grid">
+          <div class="field">
+            <label for="host">Сервер</label>
+            <input id="host" type="text" autocomplete="off" placeholder="example.org или 127.0.0.1" />
+          </div>
+          <div class="field">
+            <label for="port">Порт</label>
+            <input id="port" type="number" min="1" max="65535" inputmode="numeric" placeholder="25565" />
+          </div>
+          <div class="field">
+            <label for="user">Ник</label>
+            <input id="user" type="text" autocomplete="off" placeholder="tester" />
+          </div>
+          <div class="field">
+            <label for="ver">Версия</label>
+            <select id="ver">
+              <option value="auto">auto</option>
+              <option value="1.21.2">1.21.2</option>
+              <option value="1.21.1">1.21.1</option>
+              <option value="1.20.4">1.20.4</option>
+              <option value="1.20.1">1.20.1</option>
+              <option value="1.19.4">1.19.4</option>
+              <option value="custom">другая…</option>
+            </select>
+          </div>
+          <div class="field" id="verCustomWrap" style="display:none;grid-column:1 / span 2;">
+            <label for="verCustom">Своя версия (например 1.21.1)</label>
+            <input id="verCustom" type="text" autocomplete="off" placeholder="1.21.1" />
+          </div>
+          <div class="field" style="grid-column:3 / span 2;">
+            <label for="pass">Пароль (для /login)</label>
+            <input id="pass" type="password" autocomplete="off" placeholder="не сохраняется на диск" />
+          </div>
+        </div>
+
+        <div class="actions">
+          <div class="left">
+            <button type="submit" id="save" class="secondary">Сохранить</button>
+            <button type="button" id="connect">Подключиться</button>
+            <button type="button" id="restart" class="secondary">Перезапуск бота</button>
+            <button type="button" id="disconnect" class="danger">Отключиться</button>
+          </div>
+          <div class="small" id="cfgHint">—</div>
+        </div>
+      </form>
+      <p class="hint">Пароль хранится только в памяти процесса Node.js. Если закрыть программу — он пропадёт.</p>
+    </section>
     <div class="log-wrap">
       <div class="log-head">Лог</div>
       <div id="log"></div>
@@ -162,12 +296,31 @@
     </div>
   </main>
   <script>
+    const BOT_API_DEFAULT = 'http://127.0.0.1:3848'
+    const BOT_API_BASE = (localStorage.getItem('botApiBase') || BOT_API_DEFAULT).replace(/\/+$/, '')
+
     const logEl = document.getElementById('log')
     const pill = document.getElementById('pill')
     const meta = document.getElementById('meta')
+    const topOpenWindowBtn = document.getElementById('topOpenWindow')
+    const topRestartPanelBtn = document.getElementById('topRestartPanel')
+    const topRestartBotBtn = document.getElementById('topRestartBot')
     const form = document.getElementById('chatform')
     const input = document.getElementById('msg')
     const btn = document.getElementById('send')
+    const cfgForm = document.getElementById('cfgform')
+    const hostEl = document.getElementById('host')
+    const portEl = document.getElementById('port')
+    const userEl = document.getElementById('user')
+    const verEl = document.getElementById('ver')
+    const verCustomWrap = document.getElementById('verCustomWrap')
+    const verCustomEl = document.getElementById('verCustom')
+    const passEl = document.getElementById('pass')
+    const saveBtn = document.getElementById('save')
+    const connectBtn = document.getElementById('connect')
+    const restartBtn = document.getElementById('restart')
+    const disconnectBtn = document.getElementById('disconnect')
+    const cfgHint = document.getElementById('cfgHint')
 
     const MAX_LINES = 500
     function appendLine(level, message) {
@@ -179,6 +332,35 @@
       logEl.scrollTop = logEl.scrollHeight
     }
 
+    function setHint(text) {
+      cfgHint.textContent = text || '—'
+    }
+
+    function currentVersionValue() {
+      const v = verEl.value
+      if (v === 'custom') return verCustomEl.value.trim()
+      return v
+    }
+
+    function applyConfigToForm(c) {
+      hostEl.value = c.host || ''
+      portEl.value = c.port != null ? String(c.port) : ''
+      userEl.value = c.username || ''
+      const ver = (c.version || 'auto').trim()
+      const known = new Set(['auto', '1.21.2', '1.21.1', '1.20.4', '1.20.1', '1.19.4'])
+      if (known.has(ver)) {
+        verEl.value = ver
+        verCustomWrap.style.display = 'none'
+        verCustomEl.value = ''
+      } else {
+        verEl.value = 'custom'
+        verCustomWrap.style.display = ''
+        verCustomEl.value = ver === 'auto' ? '' : ver
+      }
+      passEl.value = ''
+      setHint(c.hasPassword ? 'Пароль: задан (не показывается)' : 'Пароль: не задан')
+    }
+
     function renderStatus(s) {
       const host = s.host != null ? s.host : '—'
       const port = s.port != null ? s.port : '—'
@@ -186,9 +368,13 @@
       const ver = s.version != null ? s.version : '—'
       meta.textContent = host + ':' + port + ' · ' + user + ' · MC ' + ver
 
+      const connecting = Boolean(s.connecting)
       if (s.spawned) {
         pill.className = 'pill ok'
         pill.textContent = 'в мире'
+      } else if (connecting) {
+        pill.className = 'pill wait'
+        pill.textContent = 'подключение…'
       } else if (s.connected) {
         pill.className = 'pill wait'
         pill.textContent = 'вход…'
@@ -196,9 +382,18 @@
         pill.className = 'pill off'
         pill.textContent = 'нет соединения'
       }
+
+      const canChat = Boolean(s.spawned)
+      input.disabled = !canChat
+      btn.disabled = !canChat
+      connectBtn.disabled = Boolean(s.connected || connecting)
+      restartBtn.disabled = !Boolean(s.connected || connecting || s.spawned)
+      disconnectBtn.disabled = !Boolean(s.connected || connecting || s.spawned)
+
+      topRestartBotBtn.disabled = !Boolean(s.connected || connecting || s.spawned)
     }
 
-    const es = new EventSource('/api/stream')
+    const es = new EventSource(BOT_API_BASE + '/api/stream')
     es.addEventListener('log', (ev) => {
       try {
         const d = JSON.parse(ev.data)
@@ -212,7 +407,123 @@
     })
     es.onerror = () => appendLine('warn', '[UI] Потеряна связь с панелью, перезагрузите страницу')
 
-    fetch('/api/status').then(r => r.json()).then(renderStatus).catch(() => {})
+    async function loadConfig() {
+      const c = await fetch(BOT_API_BASE + '/api/config').then(r => r.json())
+      applyConfigToForm(c)
+    }
+
+    fetch(BOT_API_BASE + '/api/status').then(r => r.json()).then(renderStatus).catch(() => {})
+    loadConfig().catch(() => {})
+
+    verEl.addEventListener('change', () => {
+      if (verEl.value === 'custom') verCustomWrap.style.display = ''
+      else {
+        verCustomWrap.style.display = 'none'
+        verCustomEl.value = ''
+      }
+    })
+
+    async function postJson(url, body) {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j.error || ('Ошибка ' + r.status))
+      return j
+    }
+
+    cfgForm.addEventListener('submit', async (e) => {
+      e.preventDefault()
+      saveBtn.disabled = true
+      try {
+        const patch = {
+          host: hostEl.value.trim(),
+          port: portEl.value,
+          username: userEl.value.trim(),
+          version: currentVersionValue(),
+        }
+        if (passEl.value) patch.password = passEl.value
+        const j = await postJson(BOT_API_BASE + '/api/config', patch)
+        applyConfigToForm(j.config || {})
+        appendLine('info', '[UI] Настройки сохранены')
+      } catch (err) {
+        appendLine('error', '[UI] ' + String(err && err.message ? err.message : err))
+      } finally {
+        saveBtn.disabled = false
+      }
+    })
+
+    connectBtn.addEventListener('click', async () => {
+      connectBtn.disabled = true
+      try {
+        await cfgForm.dispatchEvent(new Event('submit', { cancelable: true }))
+        await postJson(BOT_API_BASE + '/api/connect', {})
+      } catch (err) {
+        appendLine('error', '[UI] ' + String(err && err.message ? err.message : err))
+      } finally {
+        connectBtn.disabled = false
+      }
+    })
+
+    disconnectBtn.addEventListener('click', async () => {
+      disconnectBtn.disabled = true
+      try {
+        await postJson(BOT_API_BASE + '/api/disconnect', {})
+      } catch (err) {
+        appendLine('error', '[UI] ' + String(err && err.message ? err.message : err))
+      } finally {
+        disconnectBtn.disabled = false
+      }
+    })
+
+    restartBtn.addEventListener('click', async () => {
+      restartBtn.disabled = true
+      try {
+        await postJson(BOT_API_BASE + '/api/restart', {})
+      } catch (err) {
+        appendLine('error', '[UI] ' + String(err && err.message ? err.message : err))
+      } finally {
+        restartBtn.disabled = false
+      }
+    })
+
+    topRestartBotBtn.addEventListener('click', async () => {
+      topRestartBotBtn.disabled = true
+      try {
+        await postJson(BOT_API_BASE + '/api/restart', {})
+      } catch (err) {
+        appendLine('error', '[UI] ' + String(err && err.message ? err.message : err))
+      } finally {
+        topRestartBotBtn.disabled = false
+      }
+    })
+
+    topRestartPanelBtn.addEventListener('click', async () => {
+      topRestartPanelBtn.disabled = true
+      appendLine('warn', '[UI] Перезапуск панели...')
+      try {
+        await postJson('/api/panel/restart', {})
+        // После ответа процесс уже будет выходить — ждём и предлагаем обновить страницу.
+        setTimeout(() => appendLine('info', '[UI] Если страница не обновилась сама — нажмите F5'), 800)
+      } catch (err) {
+        appendLine('error', '[UI] ' + String(err && err.message ? err.message : err))
+        topRestartPanelBtn.disabled = false
+      }
+    })
+
+    // Открывает отдельное окно и переиспользует его (по имени).
+    // Работает только по клику (иначе браузер блокирует попап).
+    topOpenWindowBtn.addEventListener('click', () => {
+      try {
+        const w = window.open('/home', 'MineBotPanelWindow', 'popup=yes,width=1040,height=760')
+        if (!w) appendLine('warn', '[UI] Браузер заблокировал окно — разрешите всплывающие окна для 127.0.0.1')
+        else w.focus()
+      } catch (e) {
+        appendLine('error', '[UI] Не смог открыть окно: ' + String(e))
+      }
+    })
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault()
@@ -220,7 +531,7 @@
       if (!text) return
       btn.disabled = true
       try {
-        const r = await fetch('/api/chat', {
+        const r = await fetch(BOT_API_BASE + '/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text }),
