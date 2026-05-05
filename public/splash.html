@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MineBot</title>
+    <style>
+      :root {
+        --bg: #0d1117;
+        --panel: #161b22;
+        --border: #30363d;
+        --text: #e6edf3;
+        --muted: #8b949e;
+        --accent: #3fb950;
+        --warn: #d29922;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: var(--bg);
+        color: var(--text);
+        font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+      }
+      .card {
+        width: min(720px, calc(100vw - 32px));
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 18px 18px 14px;
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(63, 185, 80, 0.10);
+        color: var(--accent);
+        font-weight: 600;
+      }
+      .spinner {
+        width: 12px;
+        height: 12px;
+        border-radius: 999px;
+        border: 2px solid rgba(63,185,80,0.25);
+        border-top-color: rgba(63,185,80,1);
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .small {
+        margin-top: 10px;
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+      code {
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        font-size: 12px;
+        color: var(--text);
+      }
+      .warn { color: var(--warn); }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>MineBot</h1>
+      <div class="row">
+        <span class="pill"><span class="spinner"></span><span id="status">Запуск сервисов…</span></span>
+        <span id="detail"></span>
+      </div>
+      <div class="small" id="help">
+        Ждём панель на <code>http://127.0.0.1:3847/home</code>.<br />
+        Если висит дольше 30 секунд — нажми <span class="warn">Ctrl+R</span> или перезапусти приложение.
+      </div>
+    </div>
+    <script>
+      const PANEL = 'http://127.0.0.1:3847/home'
+      const statusEl = document.getElementById('status')
+      const detailEl = document.getElementById('detail')
+      const startedAt = Date.now()
+      const waitMs = 30_000
+
+      async function tick() {
+        const t = Date.now() - startedAt
+        detailEl.textContent = t < 1000 ? '' : Math.floor(t / 1000) + 'с'
+        try {
+          const r = await fetch(PANEL, { cache: 'no-store', mode: 'no-cors' })
+          // no-cors может давать opaque, но это значит, что сервер ответил.
+          statusEl.textContent = 'Открываю панель…'
+          location.replace(PANEL)
+          return
+        } catch (_) {}
+        if (t > waitMs) {
+          statusEl.textContent = 'Панель не отвечает'
+          return
+        }
+        setTimeout(tick, 450)
+      }
+      tick()
+    </script>
+  </body>
+</html>
+

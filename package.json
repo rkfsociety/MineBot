@@ -11,7 +11,8 @@
     "dist:zip": "powershell -NoProfile -Command \"Remove-Item -Force -ErrorAction SilentlyContinue dist\\\\MineBot-win32-x64.zip; Compress-Archive -Path dist\\\\MineBot-win32-x64\\\\* -DestinationPath dist\\\\MineBot-win32-x64.zip\"",
     "dist:launcher": "pkg launcher.js --targets node20-win-x64 --output dist\\\\MineBot.exe",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "tauri:build:fast": "tauri build --no-bundle"
   },
   "engines": {
     "node": ">=18"

@@ -16,7 +16,7 @@
         "width": 1100,
         "height": 780,
         "resizable": true,
-        "url": "http://127.0.0.1:3847/home"
+        "url": "splash.html"
       }
     ],
     "security": {
