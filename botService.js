@@ -1,14 +1,17 @@
 'use strict'
 
-const { fork } = require('child_process')
+const { spawn } = require('child_process')
 const express = require('express')
 const fs = require('fs')
 const path = require('path')
+const https = require('https')
 
 const config = require('./config')
-const { getSettingsPath } = require('./lib/paths')
+const { getSettingsPath, getRuntimeDir, getLogsDir } = require('./lib/paths')
 
 const SETTINGS_PATH = getSettingsPath()
+const RUNTIME_DIR = getRuntimeDir()
+const LOGS_DIR = getLogsDir()
 
 function normalizeVersion(v) {
   const raw = v == null ? '' : String(v).trim()
@@ -123,7 +126,7 @@ function stopBotProcess() {
 
     const killTimer = setTimeout(() => {
       try {
-        p.kill('SIGKILL')
+        p.kill()
       } catch {}
       resolve()
     }, 1500)
@@ -134,50 +137,166 @@ function stopBotProcess() {
     })
 
     try {
-      p.send({ type: 'stop' })
+      // Java: достаточно kill.
+      p.kill()
     } catch {}
   })
 }
 
+function fetchJson(url, headers) {
+  return new Promise((resolve, reject) => {
+    https
+      .get(url, { headers }, (res) => {
+        if (res.statusCode && res.statusCode >= 400) {
+          reject(new Error(`HTTP ${res.statusCode}`))
+          res.resume()
+          return
+        }
+        let data = ''
+        res.setEncoding('utf8')
+        res.on('data', (c) => (data += c))
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(data))
+          } catch (e) {
+            reject(e)
+          }
+        })
+      })
+      .on('error', reject)
+  })
+}
+
+function downloadToFile(url, filePath, headers) {
+  return new Promise((resolve, reject) => {
+    const out = fs.createWriteStream(filePath)
+    https
+      .get(url, { headers }, (res) => {
+        if (res.statusCode && res.statusCode >= 400) {
+          reject(new Error(`HTTP ${res.statusCode}`))
+          res.resume()
+          return
+        }
+        res.pipe(out)
+        out.on('finish', () => out.close(() => resolve()))
+      })
+      .on('error', (e) => {
+        try { out.close() } catch {}
+        reject(e)
+      })
+  })
+}
+
+async function ensureFishingBotJar() {
+  const jarPath = path.join(RUNTIME_DIR, 'FishingBot.jar')
+  if (fs.existsSync(jarPath) && fs.statSync(jarPath).size > 1_000_000) return jarPath
+
+  const rel = await fetchJson('https://api.github.com/repos/MrKinau/FishingBot/releases/latest', {
+    'User-Agent': 'MineBot',
+    Accept: 'application/vnd.github+json',
+  })
+  const assets = Array.isArray(rel && rel.assets) ? rel.assets : []
+  const jar =
+    assets.find((a) => a && typeof a.name === 'string' && a.name.toLowerCase().endsWith('.jar')) ||
+    assets.find((a) => a && typeof a.browser_download_url === 'string' && a.browser_download_url.toLowerCase().endsWith('.jar'))
+  if (!jar || !jar.browser_download_url) throw new Error('no_fishingbot_jar_asset')
+
+  const tmp = jarPath + '.download'
+  await downloadToFile(jar.browser_download_url, tmp, { 'User-Agent': 'MineBot' })
+  fs.renameSync(tmp, jarPath)
+  return jarPath
+}
+
+function writeFishingBotConfig(cfg) {
+  const cfgPath = path.join(RUNTIME_DIR, 'fishingbot-config.json')
+  const logsDir = path.join(LOGS_DIR, 'FishingBot')
+  fs.mkdirSync(logsDir, { recursive: true })
+
+  const versionStr = cfg.version === false ? 'AUTOMATIC' : String(cfg.version)
+  const startTexts = []
+  if (cfg.password) {
+    const loginTpl = authCfg.loginCommand || '/login {password}'
+    const regTpl = authCfg.registerCommand || '/register {password} {password}'
+    const t = cfg.registerFirst ? regTpl : loginTpl
+    startTexts.push(String(t).replaceAll('{password}', cfg.password))
+  }
+
+  const j = {
+    server: {
+      ip: cfg.host,
+      port: cfg.port,
+      'online-mode': false,
+      'default-protocol': versionStr,
+    },
+    account: {
+      mail: cfg.username,
+    },
+    'start-text': {
+      enabled: startTexts.length > 0,
+      text: startTexts,
+    },
+    auto: {
+      'auto-reconnect': false,
+    },
+    logs: {
+      'log-packets': false,
+    },
+  }
+  fs.writeFileSync(cfgPath, JSON.stringify(j, null, 2), 'utf8')
+  return { cfgPath, logsDir }
+}
+
 function startBotProcess() {
   if (botProc) return
-  const childPath = path.join(__dirname, 'botChild.js')
-  botProc = fork(childPath, [], { stdio: ['pipe', 'pipe', 'pipe', 'ipc'] })
-
-  botProc.on('message', (msg) => {
-    if (!msg || typeof msg !== 'object') return
-    if (msg.type === 'log') {
-      log(msg.level || 'info', msg.message || '')
-      return
-    }
-    if (msg.type === 'status') {
-      setBotState(msg.patch || {})
-    }
-  })
-
-  botProc.on('exit', (code, signal) => {
-    log('warn', `Бот остановлен (code=${code}, signal=${signal || 'none'})`)
-    botProc = null
-    setBotState({ connecting: false, connected: false, spawned: false })
-  })
-
   setBotState({ connecting: true, connected: false, spawned: false })
+
   try {
-    botProc.send({
-      type: 'start',
-      cfg: {
+    ;(async () => {
+      const jarPath = await ensureFishingBotJar()
+      const { cfgPath, logsDir } = writeFishingBotConfig({
         host: currentCfg.host,
         port: currentCfg.port,
         username: currentCfg.username,
-        version: currentCfg.version === false ? 'auto' : String(currentCfg.version),
+        version: currentCfg.version,
         password: currentCfg.password || '',
         registerFirst: Boolean(currentCfg.registerFirst),
-      },
-      authCfg,
-      authDelayMs,
+      })
+
+      const args = ['-jar', jarPath, '-nogui', '-config', cfgPath, '-logsdir', logsDir]
+      botProc = spawn('java', args, { cwd: RUNTIME_DIR, windowsHide: true })
+
+      botProc.stdout.setEncoding('utf8')
+      botProc.stderr.setEncoding('utf8')
+
+      const onData = (chunk) => {
+        const lines = String(chunk || '').split(/\r?\n/)
+        for (const ln of lines) {
+          const line = ln.trim()
+          if (!line) continue
+          log('info', line)
+          // Простейшая эвристика статуса.
+          if (/has connected|connected/i.test(line)) setBotState({ connecting: false, connected: true })
+          if (/spawn|in game|joined/i.test(line)) setBotState({ spawned: true })
+          if (/kicked|disconnect|disconnected/i.test(line)) setBotState({ connecting: false, connected: false, spawned: false })
+        }
+      }
+      botProc.stdout.on('data', onData)
+      botProc.stderr.on('data', (c) => onData(String(c)))
+
+      botProc.on('exit', (code, signal) => {
+        log('warn', `Бот остановлен (code=${code}, signal=${signal || 'none'})`)
+        botProc = null
+        setBotState({ connecting: false, connected: false, spawned: false })
+      })
+    })().catch((e) => {
+      log('error', `Не смог запустить Java-бота: ${e instanceof Error ? e.message : String(e)}`)
+      botProc = null
+      setBotState({ connecting: false, connected: false, spawned: false })
     })
   } catch (e) {
-    log('error', `Не смог запустить бота: ${e instanceof Error ? e.message : String(e)}`)
+    log('error', `Не смог запустить Java-бота: ${e instanceof Error ? e.message : String(e)}`)
+    botProc = null
+    setBotState({ connecting: false, connected: false, spawned: false })
   }
 }
 
@@ -258,7 +377,10 @@ app.post('/api/chat', (req, res) => {
   if (text.length > 256) return res.status(400).json({ ok: false, error: 'too_long' })
   if (!botProc) return res.status(503).json({ ok: false, error: 'bot_not_connected' })
   try {
-    botProc.send({ type: 'chat', text })
+    // FishingBot читает команды/текст из stdin.
+    try {
+      botProc.stdin.write(text + '\n')
+    } catch {}
     res.json({ ok: true })
   } catch (e) {
     res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) })
