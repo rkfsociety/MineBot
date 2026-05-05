@@ -72,6 +72,16 @@ function normalizeVersion(v) {
   return raw
 }
 
+function mapVersionToProtocol(v) {
+  // minecraft-protocol/mineflayer принимает либо строку (например "1.20.4"),
+  // либо protocolVersion (число). Для "26.1.x" в текущих либах часто нет строкового алиаса,
+  // поэтому маппим на известный protocol id (как в FishingBot).
+  const s = v == null ? '' : String(v).trim()
+  if (!s) return v
+  if (/^26\.1(?:\.\d+)?$/.test(s)) return 775
+  return v
+}
+
 function formatAuthCommand(template, password) {
   return String(template).replaceAll('{password}', password || '')
 }
@@ -143,6 +153,7 @@ async function start(payload) {
         resolvedVersion = proto
       }
       if (resolvedVersion !== false) {
+        resolvedVersion = mapVersionToProtocol(resolvedVersion)
         log('info', `Определена версия сервера: ${resolvedVersion}`)
         setStatus({
           version: typeof resolvedVersion === 'number' ? String(resolvedVersion) : String(resolvedVersion),
@@ -152,6 +163,9 @@ async function start(payload) {
       log('warn', `Не удалось определить версию сервера (ping): ${formatAny(e)}`)
     }
   }
+
+  // Если версия задана вручную строкой, которая не поддерживается как алиас — маппим на protocolVersion.
+  resolvedVersion = mapVersionToProtocol(resolvedVersion)
 
   bot = mineflayer.createBot({
     host: currentCfg.host,
