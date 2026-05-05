@@ -15,6 +15,7 @@ const LOGS_DIR = getLogsDir()
 let botStartedAt = null
 let lastBotError = null
 let fishingBotVersion = null
+let lastBotExit = null
 let authRemember = {}
 
 function normalizeVersion(v) {
@@ -471,6 +472,7 @@ function startBotProcess() {
       botProc.on('exit', (code, signal) => {
         clearAuthTimer()
         log('warn', `Бот остановлен (code=${code}, signal=${signal || 'none'})`)
+        lastBotExit = { at: Date.now(), code, signal: signal || 'none' }
         botProc = null
         setBotState({ connecting: false, connected: false, spawned: false })
       })
@@ -546,6 +548,7 @@ app.get('/api/debug', (_req, res) => {
       pid: botProc && botProc.pid ? botProc.pid : null,
       startedAt: botStartedAt,
       lastError: lastBotError,
+      lastExit: lastBotExit,
       state: botState,
       config: {
         host: currentCfg.host,

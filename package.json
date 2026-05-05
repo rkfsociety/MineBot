@@ -1,6 +1,6 @@
 {
   "name": "minebot",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "private": true,
   "description": "Minecraft Java Edition bot (mineflayer)",
   "main": "runner.js",

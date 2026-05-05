@@ -676,16 +676,7 @@
       e.preventDefault()
       saveBtn.disabled = true
       try {
-        const patch = {
-          host: hostEl.value.trim(),
-          port: portEl.value,
-          username: userEl.value.trim(),
-          version: currentVersionValue(),
-        }
-        if (passEl.value) patch.password = passEl.value
-        const j = await postJson(BOT_API_BASE + '/api/config', patch)
-        applyConfigToForm(j.config || {})
-        appendLine('info', '[UI] Настройки сохранены')
+        await saveConfig()
       } catch (err) {
         appendLine('error', '[UI] ' + String(err && err.message ? err.message : err))
       } finally {
@@ -693,10 +684,31 @@
       }
     })
 
+    async function saveConfig() {
+      const patch = {
+        host: hostEl.value.trim(),
+        port: portEl.value,
+        username: userEl.value.trim(),
+        version: currentVersionValue(),
+      }
+      if (passEl.value) patch.password = passEl.value
+      const j = await postJson(BOT_API_BASE + '/api/config', patch)
+      applyConfigToForm(j.config || {})
+      appendLine('info', '[UI] Настройки сохранены')
+      return j
+    }
+
     connectBtn.addEventListener('click', async () => {
       connectBtn.disabled = true
       try {
-        await cfgForm.dispatchEvent(new Event('submit', { cancelable: true }))
+        // Важно: не используем dispatchEvent для submit (он не await'ится).
+        // Сначала гарантированно сохраняем конфиг, затем подключаемся.
+        saveBtn.disabled = true
+        try {
+          await saveConfig()
+        } finally {
+          saveBtn.disabled = false
+        }
         await postJson(BOT_API_BASE + '/api/connect', {})
       } catch (err) {
         appendLine('error', '[UI] ' + String(err && err.message ? err.message : err))
