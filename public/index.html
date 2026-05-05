@@ -518,6 +518,28 @@
         const j = await r.json().catch(() => ({}))
         if (!r.ok || !j.ok) throw new Error(j.error || ('Ошибка ' + r.status))
         appendLine('info', '[UI] Ок. Перезапускаю…')
+        // Repair инициирует полный рестарт runner'а: панель и botService могут на секунды пропасть.
+        // Автоматически ждём, пока панель снова поднимется, затем перезагружаем окно.
+        const startedAt = Date.now()
+        const waitMs = 20000
+        const tickMs = 450
+        const timer = setInterval(async () => {
+          if (Date.now() - startedAt > waitMs) {
+            clearInterval(timer)
+            appendLine('warn', '[UI] После починки панель долго не поднимается. Попробуйте F5.')
+            topRepairBtn.disabled = false
+            return
+          }
+          try {
+            const rr = await fetch('/home', { cache: 'no-store' })
+            if (rr.ok) {
+              clearInterval(timer)
+              location.reload()
+            }
+          } catch (_) {
+            // пока панель не поднялась — это нормально
+          }
+        }, tickMs)
       } catch (err) {
         appendLine('error', '[UI] ' + String(err && err.message ? err.message : err))
         topRepairBtn.disabled = false
