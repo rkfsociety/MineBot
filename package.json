@@ -1,6 +1,6 @@
 {
   "name": "minebot",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Minecraft Java Edition bot (mineflayer)",
   "main": "electronMain.js",
@@ -13,6 +13,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "adm-zip": "^0.5.17",
     "express": "^4.21.2",
     "mineflayer": "^4.37.1"
   },

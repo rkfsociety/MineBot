@@ -225,7 +225,8 @@
   <header>
     <h1>MineBot</h1>
     <div class="top-actions">
-      <button type="button" id="topOpenWindow" class="secondary">Окно панели</button>
+      <button type="button" id="topUpdate" class="secondary">Обновить</button>
+      <button type="button" id="topRepair" class="secondary">Починить</button>
       <button type="button" id="topRestartPanel" class="secondary">Перезапуск панели</button>
       <button type="button" id="topRestartBot" class="secondary">Перезапуск бота</button>
       <span id="pill" class="pill off">нет данных</span>
@@ -302,7 +303,8 @@
     const logEl = document.getElementById('log')
     const pill = document.getElementById('pill')
     const meta = document.getElementById('meta')
-    const topOpenWindowBtn = document.getElementById('topOpenWindow')
+    const topUpdateBtn = document.getElementById('topUpdate')
+    const topRepairBtn = document.getElementById('topRepair')
     const topRestartPanelBtn = document.getElementById('topRestartPanel')
     const topRestartBotBtn = document.getElementById('topRestartBot')
     const form = document.getElementById('chatform')
@@ -383,14 +385,15 @@
         pill.textContent = 'нет соединения'
       }
 
+      const running = Boolean(s.running)
       const canChat = Boolean(s.spawned)
       input.disabled = !canChat
       btn.disabled = !canChat
-      connectBtn.disabled = Boolean(s.connected || connecting)
-      restartBtn.disabled = !Boolean(s.connected || connecting || s.spawned)
-      disconnectBtn.disabled = !Boolean(s.connected || connecting || s.spawned)
+      connectBtn.disabled = Boolean(running || s.connected || connecting)
+      restartBtn.disabled = !Boolean(running || s.connected || connecting || s.spawned)
+      disconnectBtn.disabled = !Boolean(running || s.connected || connecting || s.spawned)
 
-      topRestartBotBtn.disabled = !Boolean(s.connected || connecting || s.spawned)
+      topRestartBotBtn.disabled = !Boolean(running || s.connected || connecting || s.spawned)
     }
 
     const es = new EventSource(BOT_API_BASE + '/api/stream')
@@ -405,14 +408,22 @@
         renderStatus(JSON.parse(ev.data))
       } catch (_) {}
     })
-    es.onerror = () => appendLine('warn', '[UI] Потеряна связь с панелью, перезагрузите страницу')
+    es.onerror = () => appendLine('warn', '[UI] Потеряна связь с BotService, включён опрос статуса')
 
     async function loadConfig() {
       const c = await fetch(BOT_API_BASE + '/api/config').then(r => r.json())
       applyConfigToForm(c)
     }
 
-    fetch(BOT_API_BASE + '/api/status').then(r => r.json()).then(renderStatus).catch(() => {})
+    async function pollStatusOnce() {
+      try {
+        const s = await fetch(BOT_API_BASE + '/api/status', { cache: 'no-store' }).then(r => r.json())
+        renderStatus(s)
+      } catch (_) {}
+    }
+
+    pollStatusOnce()
+    setInterval(pollStatusOnce, 1500)
     loadConfig().catch(() => {})
 
     verEl.addEventListener('change', () => {
@@ -433,6 +444,85 @@
       if (!r.ok) throw new Error(j.error || ('Ошибка ' + r.status))
       return j
     }
+
+    async function checkUpdate() {
+      try {
+        const r = await fetch('/api/update/check', { cache: 'no-store' })
+        const j = await r.json().catch(() => ({}))
+        if (r.ok && j && j.ok) {
+          if (j.updateAvailable) {
+            topUpdateBtn.disabled = false
+            topUpdateBtn.textContent = `Обновить (${j.local} → ${j.remote})`
+            topUpdateBtn.dataset.mode = 'git'
+            return
+          }
+          topUpdateBtn.disabled = true
+          topUpdateBtn.textContent = `Актуально (${j.local})`
+          topUpdateBtn.dataset.mode = 'none'
+          return
+        }
+        // Если git-обновление недоступно (например exe), пробуем релизы.
+        const rr = await fetch('/api/update/release/check', { cache: 'no-store' })
+        const jj = await rr.json().catch(() => ({}))
+        if (rr.ok && jj && jj.ok) {
+          if (jj.updateAvailable) {
+            topUpdateBtn.disabled = false
+            topUpdateBtn.textContent = `Обновить (${jj.local} → ${jj.remote})`
+            topUpdateBtn.dataset.mode = 'release'
+          } else {
+            topUpdateBtn.disabled = true
+            topUpdateBtn.textContent = `Актуально (${jj.local})`
+            topUpdateBtn.dataset.mode = 'none'
+          }
+          return
+        }
+        topUpdateBtn.disabled = true
+        topUpdateBtn.textContent = 'Обновить'
+        topUpdateBtn.dataset.mode = 'none'
+      } catch (_) {
+        topUpdateBtn.disabled = true
+        topUpdateBtn.textContent = 'Обновить'
+        topUpdateBtn.dataset.mode = 'none'
+      }
+    }
+
+    // Проверяем обновления при открытии (без релизов: по версии из GitHub).
+    checkUpdate()
+    setInterval(checkUpdate, 60_000)
+
+    topUpdateBtn.addEventListener('click', async () => {
+      topUpdateBtn.disabled = true
+      appendLine('warn', '[UI] Обновление из GitHub...')
+      try {
+        const mode = topUpdateBtn.dataset.mode || 'git'
+        const url = mode === 'release' ? '/api/update/release/apply' : '/api/update/apply'
+        const r = await fetch(url, { method: 'POST' })
+        const j = await r.json().catch(() => ({}))
+        if (!r.ok || !j.ok) throw new Error(j.message || j.error || ('Ошибка ' + r.status))
+        if (j.updated) appendLine('info', '[UI] Обновление установлено. Перезапускаюсь...')
+        else appendLine('info', '[UI] Обновление не требуется.')
+      } catch (err) {
+        appendLine('error', '[UI] ' + String(err && err.message ? err.message : err))
+        topUpdateBtn.disabled = false
+      } finally {
+        // если обновление прошло — панель уйдёт в рестарт, кнопку не трогаем
+        setTimeout(checkUpdate, 1500)
+      }
+    })
+
+    topRepairBtn.addEventListener('click', async () => {
+      topRepairBtn.disabled = true
+      appendLine('warn', '[UI] Починка: освобождаю порты и перезапускаю сервисы...')
+      try {
+        const r = await fetch('/api/repair', { method: 'POST' })
+        const j = await r.json().catch(() => ({}))
+        if (!r.ok || !j.ok) throw new Error(j.error || ('Ошибка ' + r.status))
+        appendLine('info', '[UI] Ок. Перезапускаю…')
+      } catch (err) {
+        appendLine('error', '[UI] ' + String(err && err.message ? err.message : err))
+        topRepairBtn.disabled = false
+      }
+    })
 
     cfgForm.addEventListener('submit', async (e) => {
       e.preventDefault()
@@ -505,23 +595,30 @@
       appendLine('warn', '[UI] Перезапуск панели...')
       try {
         await postJson('/api/panel/restart', {})
-        // После ответа процесс уже будет выходить — ждём и предлагаем обновить страницу.
-        setTimeout(() => appendLine('info', '[UI] Если страница не обновилась сама — нажмите F5'), 800)
+        // Панель сейчас упадёт и поднимется заново. Ждём её и перезагружаем окно автоматически.
+        const startedAt = Date.now()
+        const waitMs = 15000
+        const tickMs = 400
+        const timer = setInterval(async () => {
+          if (Date.now() - startedAt > waitMs) {
+            clearInterval(timer)
+            appendLine('warn', '[UI] Панель долго не поднимается. Попробуйте F5.')
+            topRestartPanelBtn.disabled = false
+            return
+          }
+          try {
+            const r = await fetch('/home', { cache: 'no-store' })
+            if (r.ok) {
+              clearInterval(timer)
+              location.reload()
+            }
+          } catch (_) {
+            // пока панель не поднялась — это нормально
+          }
+        }, tickMs)
       } catch (err) {
         appendLine('error', '[UI] ' + String(err && err.message ? err.message : err))
         topRestartPanelBtn.disabled = false
-      }
-    })
-
-    // Открывает отдельное окно и переиспользует его (по имени).
-    // Работает только по клику (иначе браузер блокирует попап).
-    topOpenWindowBtn.addEventListener('click', () => {
-      try {
-        const w = window.open('/home', 'MineBotPanelWindow', 'popup=yes,width=1040,height=760')
-        if (!w) appendLine('warn', '[UI] Браузер заблокировал окно — разрешите всплывающие окна для 127.0.0.1')
-        else w.focus()
-      } catch (e) {
-        appendLine('error', '[UI] Не смог открыть окно: ' + String(e))
       }
     })
 

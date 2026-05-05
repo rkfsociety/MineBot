@@ -3,6 +3,7 @@
 const { app, BrowserWindow, dialog } = require('electron')
 const path = require('path')
 const { spawn } = require('child_process')
+const fs = require('fs')
 
 let mainWindow = null
 let runnerProc = null
@@ -12,10 +13,19 @@ const PANEL_URL = process.env.PANEL_URL || 'http://127.0.0.1:3847/home'
 function startRunner() {
   if (runnerProc) return
   const runnerPath = path.join(__dirname, 'runner.js')
+  const dataDir = app.getPath('userData')
+  try {
+    fs.mkdirSync(dataDir, { recursive: true })
+  } catch {}
   runnerProc = spawn(process.execPath, [runnerPath], {
     stdio: 'ignore',
     windowsHide: true,
-    env: { ...process.env },
+    env: {
+      ...process.env,
+      MINEBOT_DATA_DIR: dataDir,
+      MINEBOT_EXE_PATH: process.execPath,
+      MINEBOT_ELECTRON_PID: String(process.pid),
+    },
   })
   runnerProc.on('exit', () => {
     runnerProc = null

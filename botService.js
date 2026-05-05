@@ -6,8 +6,9 @@ const fs = require('fs')
 const path = require('path')
 
 const config = require('./config')
+const { getSettingsPath } = require('./paths')
 
-const SETTINGS_PATH = path.join(__dirname, 'settings.local.json')
+const SETTINGS_PATH = getSettingsPath()
 
 function normalizeVersion(v) {
   const raw = v == null ? '' : String(v).trim()
@@ -99,6 +100,7 @@ function statusSnapshot() {
     username: currentCfg.username,
     version: currentCfg.version === false ? 'auto' : String(currentCfg.version),
     hasPassword: Boolean(currentCfg.password),
+    running: Boolean(botProc),
     connecting: Boolean(botState.connecting),
     connected: Boolean(botState.connected),
     spawned: Boolean(botState.spawned),
