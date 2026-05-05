@@ -254,6 +254,8 @@
             <label for="ver">Версия</label>
             <select id="ver">
               <option value="auto">auto</option>
+              <option value="26.1.2">26.1.2</option>
+              <option value="26.1.1">26.1.1</option>
               <option value="1.21.2">1.21.2</option>
               <option value="1.21.1">1.21.1</option>
               <option value="1.20.4">1.20.4</option>
@@ -349,7 +351,7 @@
       portEl.value = c.port != null ? String(c.port) : ''
       userEl.value = c.username || ''
       const ver = (c.version || 'auto').trim()
-      const known = new Set(['auto', '1.21.2', '1.21.1', '1.20.4', '1.20.1', '1.19.4'])
+      const known = new Set(['auto', '26.1.2', '26.1.1', '1.21.2', '1.21.1', '1.20.4', '1.20.1', '1.19.4'])
       if (known.has(ver)) {
         verEl.value = ver
         verCustomWrap.style.display = 'none'

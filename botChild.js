@@ -49,13 +49,8 @@ function normalizeVersion(v) {
   const raw = v == null ? '' : String(v).trim()
   if (!raw) return false
   if (raw === 'auto' || raw === '0') return false
-  // Mineflayer ждёт версию Minecraft вида 1.xx.x (или auto).
-  // Строки вида 26.1.2 часто относятся к сборке/лаунчеру/модлоадеру и не являются версией протокола MC.
-  if (/^\d+\.\d+\.\d+$/.test(raw) && !raw.startsWith('1.')) {
-    throw new Error(
-      `Неверная версия "${raw}". Укажите версию Minecraft (например 1.21.2) или выберите auto.`,
-    )
-  }
+  // Важно: не навязываем формат "1.xx.x".
+  // Mineflayer принимает строку версии, и формат может меняться в новых релизах игры.
   return raw
 }
 
@@ -170,13 +165,11 @@ async function start(payload) {
     setStatus({ connecting: false, connected: false, spawned: false })
     const msg = formatAny(reason)
     log('error', `Кик: ${msg || 'неизвестная причина'}`)
-    // Velocity/Paper иногда возвращает текст с версией сборки (например 26.1.2),
-    // которая не является версией Minecraft (mineflayer ждёт 1.xx.x).
-    if (/Outdated client/i.test(msg) && /\b\d+\.\d+\.\d+\b/.test(msg) && !/\b1\.\d+\.\d+\b/.test(msg)) {
+    if (/Outdated client/i.test(msg)) {
       log(
         'warn',
-        'Подсказка: сообщение про версию вида "26.x.x" обычно относится к Paper/сборке. ' +
-          'В панели укажи версию Minecraft (например 1.21.2 или 1.21.1) вместо auto и попробуй снова.',
+        'Подсказка: сервер отклонил клиент по версии. В панели попробуй указать точную версию, ' +
+          'которую пишет сервер (например 26.1.2), вместо auto.',
       )
     }
   })
