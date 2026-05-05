@@ -2,7 +2,7 @@
 
 const { spawn } = require('child_process')
 const path = require('path')
-const { repairMineBotPortsWin32 } = require('./portRepair')
+const { repairMineBotPortsWin32 } = require('./lib/portRepair')
 
 const PANEL_RESTART_CODE = 42
 const FULL_RESTART_CODE = 43

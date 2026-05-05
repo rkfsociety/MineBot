@@ -6,7 +6,7 @@ const fs = require('fs')
 const path = require('path')
 
 const config = require('./config')
-const { getSettingsPath } = require('./paths')
+const { getSettingsPath } = require('./lib/paths')
 
 const SETTINGS_PATH = getSettingsPath()
 

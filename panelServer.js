@@ -5,8 +5,8 @@ const path = require('path')
 const config = require('./config')
 const https = require('https')
 const { execFile } = require('child_process')
-const { getDataDir } = require('./paths')
-const { repairMineBotPortsWin32 } = require('./portRepair')
+const { getDataDir } = require('./lib/paths')
+const { repairMineBotPortsWin32 } = require('./lib/portRepair')
 const fs = require('fs')
 
 const PANEL_RESTART_CODE = 42
