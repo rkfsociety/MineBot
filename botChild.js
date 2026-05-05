@@ -163,7 +163,7 @@ async function start(payload) {
 
   // Таймаут на подключение: если не дошли до login/spawn, завершаем процесс,
   // чтобы UI не висел в "подключение" бесконечно.
-  const connectTimeoutMs = parseInt(process.env.MC_CONNECT_TIMEOUT_MS || '20000', 10)
+  const connectTimeoutMs = parseInt(process.env.MC_CONNECT_TIMEOUT_MS || '5000', 10)
   if (Number.isFinite(connectTimeoutMs) && connectTimeoutMs > 1000) {
     connectTimer = setTimeout(() => {
       if (stopping || everSpawned) return
