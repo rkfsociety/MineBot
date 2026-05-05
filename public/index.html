@@ -309,16 +309,16 @@
       </form>
       <p class="hint">Пароль сохраняется локально на этом компьютере (в %APPDATA%\\MineBot\\settings.local.json).</p>
     </section>
-    <div class="log-wrap">
-      <div class="log-head">Лог</div>
-      <div id="log"></div>
-    </div>
     <div>
       <form class="chat-bar" id="chatform">
         <input id="msg" type="text" autocomplete="off" placeholder="Сообщение в чат Minecraft…" />
         <button type="submit" id="send">Отправить</button>
       </form>
       <p class="hint">Команды с слэшем тоже можно отправить (например <code>/help</code>).</p>
+    </div>
+    <div class="log-wrap">
+      <div class="log-head">Лог (новые сообщения сверху)</div>
+      <div id="log"></div>
     </div>
     <section class="panel" id="debugPanel" style="display:none;">
       <h2>Дебаг</h2>
@@ -373,9 +373,10 @@
       const div = document.createElement('div')
       div.className = 'line ' + (level || 'info')
       div.textContent = message
-      logEl.appendChild(div)
-      while (logEl.childElementCount > MAX_LINES) logEl.removeChild(logEl.firstChild)
-      logEl.scrollTop = logEl.scrollHeight
+      // Новые строки — сверху.
+      logEl.insertBefore(div, logEl.firstChild)
+      while (logEl.childElementCount > MAX_LINES) logEl.removeChild(logEl.lastChild)
+      logEl.scrollTop = 0
     }
 
     function setHint(text) {
