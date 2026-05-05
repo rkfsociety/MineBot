@@ -1,0 +1,19 @@
+[package]
+name = "minebot"
+version = "0.1.1"
+description = "MineBot desktop (Tauri)"
+authors = ["rkfsociety"]
+edition = "2021"
+
+[lib]
+name = "minebot_lib"
+crate-type = ["cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["devtools"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
