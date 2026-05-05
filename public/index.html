@@ -340,7 +340,31 @@
   </main>
   <script>
     const BOT_API_DEFAULT = 'http://127.0.0.1:3848'
-    const BOT_API_BASE = (localStorage.getItem('botApiBase') || BOT_API_DEFAULT).replace(/\/+$/, '')
+    let BOT_API_BASE = (localStorage.getItem('botApiBase') || BOT_API_DEFAULT).replace(/\/+$/, '')
+
+    async function validateBotApiBase() {
+      // Если в localStorage остался кривой адрес — панель будет "слепая" и покажет Failed to fetch.
+      // Поэтому проверяем и откатываемся на дефолтный localhost:3848.
+      const tryBase = async (base) => {
+        const ctrl = new AbortController()
+        const t = setTimeout(() => ctrl.abort(), 1200)
+        try {
+          const r = await fetch(base + '/api/status', { cache: 'no-store', signal: ctrl.signal })
+          return r && r.ok
+        } catch {
+          return false
+        } finally {
+          clearTimeout(t)
+        }
+      }
+
+      if (await tryBase(BOT_API_BASE)) return
+      if (BOT_API_BASE !== BOT_API_DEFAULT && (await tryBase(BOT_API_DEFAULT))) {
+        BOT_API_BASE = BOT_API_DEFAULT
+        try { localStorage.setItem('botApiBase', BOT_API_BASE) } catch {}
+        appendLine('warn', '[UI] BotService адрес был неверный — сбросил на ' + BOT_API_BASE)
+      }
+    }
 
     const logEl = document.getElementById('log')
     const pill = document.getElementById('pill')
@@ -542,6 +566,7 @@
 
     // Версия панели рядом с названием.
     ;(async () => {
+      await validateBotApiBase()
       try {
         const r = await fetch('/api/version', { cache: 'no-store' })
         const j = await r.json().catch(() => ({}))
@@ -605,6 +630,7 @@
         out.panel = { ok: false, error: String(e && e.message ? e.message : e) }
       }
       try {
+        out.botApiBase = BOT_API_BASE
         const r = await fetch(BOT_API_BASE + '/api/debug', { cache: 'no-store' })
         const ct = (r.headers.get('content-type') || '').toLowerCase()
         if (!r.ok) throw new Error('HTTP ' + r.status)
