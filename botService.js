@@ -305,6 +305,7 @@ function startBotProcess() {
   let authTimer = null
   let authDisabledByEngine = false
   let connectedAt = 0
+  let playReadyAt = 0
   const commandDelayMs = parseInt(process.env.FB_COMMAND_DELAY_MS || '1200', 10)
   function clearAuthTimer() {
     if (!authTimer) return
@@ -323,7 +324,8 @@ function startBotProcess() {
 
   function sendLineWithDelay(line) {
     const now = Date.now()
-    const base = connectedAt || botStartedAt || now
+    // Важно: чат-команды можно отправлять только после перехода в PLAY.
+    const base = playReadyAt || connectedAt || botStartedAt || now
     const delay = Number.isFinite(commandDelayMs) && commandDelayMs > 0 ? commandDelayMs : 0
     const wait = Math.max(0, base + delay - now)
     if (wait <= 0) return sendLine(line)
@@ -338,20 +340,9 @@ function startBotProcess() {
   }
   function maybeAuth() {
     if (!currentCfg.password) return
-    // В FishingBot v2.13.x для протокола 26.1.x сейчас ломается отправка чат-команд:
-    // PacketOutUnsignedChatCommand не зарегистрирован → падает командный executor.
-    // Пока не появится фикc в FishingBot, не пытаемся автологиниться на 26.1.x.
-    if (String(currentCfg.version || '').startsWith('26.1')) {
-      if (!authDisabledByEngine) {
-        authDisabledByEngine = true
-        log(
-          'error',
-          'Авто-авторизация отключена: FishingBot для 26.1.x сейчас не умеет отправлять чат-команды ' +
-            '(PacketOutUnsignedChatCommand не зарегистрирован). Нужно обновление FishingBot.',
-        )
-      }
-      return
-    }
+    if (authDisabledByEngine) return
+    // Чат-команды отправляем только когда бот реально в PLAY (иначе registry LOGIN не содержит chat_command).
+    if (!playReadyAt) return
     const loginTpl = authCfg.loginCommand || '/login {password}'
     const regTpl = authCfg.registerCommand || '/register {password} {password}'
     const remembered = getRemembered()
@@ -408,18 +399,21 @@ function startBotProcess() {
           if (/spawn|in game|joined/i.test(line)) setBotState({ spawned: true })
           if (/kicked|disconnect|disconnected/i.test(line)) setBotState({ connecting: false, connected: false, spawned: false })
 
+          // Признак, что мы уже в PLAY и можем слать чат-команды (включается ChatProxyModule).
+          if (!playReadyAt && (/ChatProxyModule/i.test(line) && /(enabled|включен)/i.test(line))) {
+            playReadyAt = Date.now()
+            // если мы ждали авторизацию — пробуем теперь
+            maybeAuth()
+          }
+
           // Явный детект известной проблемы FishingBot на 26.1.x: нельзя отправлять чат-команды.
-          if (
-            line.includes('InvalidPacketException') ||
-            line.includes('PacketOutUnsignedChatCommand') ||
-            line.includes('ID пакета PacketOutUnsignedChatCommand')
-          ) {
+          if (line.includes('InvalidPacketException') || line.includes('PacketOutUnsignedChatCommand') || line.includes('ID пакета PacketOutUnsignedChatCommand')) {
             lastBotError =
-              'FishingBot не поддерживает отправку чат-команд на 26.1.x (PacketOutUnsignedChatCommand). ' +
-              'Нужно обновление FishingBot.'
-            // Чтобы не спамить попытками /register /login и не оставлять "подключение", просто отключаем автологин.
+              'FishingBot не смог отправить чат-команду (PacketOutUnsignedChatCommand). ' +
+              'Чаще всего это происходит, если команда отправлена слишком рано (до PLAY), или это баг FishingBot.'
             authDisabledByEngine = true
             clearAuthTimer()
+            log('error', 'Авто-авторизация отключена из-за ошибки отправки пакета. Попробуй увеличить задержку FB_COMMAND_DELAY_MS.')
           }
 
           // Детект подсказок авторизации из чата/сервера.
