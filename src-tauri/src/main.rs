@@ -302,7 +302,7 @@ fn main() {
       thread::spawn(move || {
         // 1) Гарантируем, что код есть (fallback: main.zip)
         ensure_app_latest(&app_root_bg);
-        // 2) Обновляем серверный jar из Releases и рестартим, если изменился.
+        // 2) Однократный апдейт при старте.
         let updated = ensure_server_latest(&app_root_bg);
         if updated {
           kill_listeners_win32(&[3847]);
@@ -316,6 +316,27 @@ fn main() {
             break;
           }
           thread::sleep(Duration::from_millis(200));
+        }
+
+        // 3) Регулярная проверка обновлений + автоперезапуск.
+        loop {
+          thread::sleep(Duration::from_secs(60));
+
+          // Если сервер упал — поднимем.
+          if !is_listening(3847) {
+            append_log(&app_root_bg, "watchdog: server not listening, starting");
+            start_java_server(&app_root_bg, &system_java_bg);
+            continue;
+          }
+
+          // Проверяем обновление jar.
+          let upd = ensure_server_latest(&app_root_bg);
+          if upd {
+            append_log(&app_root_bg, "watchdog: server jar updated, restarting");
+            kill_listeners_win32(&[3847]);
+            thread::sleep(Duration::from_millis(350));
+            start_java_server(&app_root_bg, &system_java_bg);
+          }
         }
       });
 
