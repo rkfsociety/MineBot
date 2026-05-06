@@ -27,7 +27,8 @@ public final class Main {
 
     server.createContext("/api/config", ex -> {
       if ("GET".equalsIgnoreCase(ex.getRequestMethod())) {
-        send(ex, 200, "application/json; charset=utf-8", settings.toJson(false));
+        // Пароль хранится локально, поэтому можно отдавать его в UI.
+        send(ex, 200, "application/json; charset=utf-8", settings.toJson(true));
         return;
       }
       if ("POST".equalsIgnoreCase(ex.getRequestMethod())) {
@@ -41,7 +42,7 @@ public final class Main {
         if (pass != null) settings.password = pass;
         settings.registerFirst = JsonMini.getBool(body, "registerFirst", settings.registerFirst);
         settings.save(settingsPath);
-        send(ex, 200, "application/json; charset=utf-8", "{\"ok\":true,\"config\":" + settings.toJson(false) + "}");
+        send(ex, 200, "application/json; charset=utf-8", "{\"ok\":true,\"config\":" + settings.toJson(true) + "}");
         return;
       }
       send(ex, 405, "application/json; charset=utf-8", "{\"ok\":false,\"error\":\"method_not_allowed\"}");

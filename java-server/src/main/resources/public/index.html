@@ -78,6 +78,7 @@
         portEl.value = c.port != null ? String(c.port) : ''
         userEl.value = c.username || ''
         verEl.value = c.version || 'auto'
+        passEl.value = c.password || ''
       }
 
       async function poll() {
@@ -89,7 +90,6 @@
 
       saveBtn.onclick = async () => {
         await postJson('/api/config', { host: hostEl.value, port: parseInt(portEl.value || '25565', 10), username: userEl.value, version: verEl.value || 'auto', password: passEl.value })
-        passEl.value = ''
         addLine('info', '[UI] Настройки сохранены')
       }
       connectBtn.onclick = async () => { await postJson('/api/connect'); addLine('info', '[UI] Подключаюсь…') }
