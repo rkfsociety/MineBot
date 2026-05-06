@@ -5,19 +5,114 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>MineBot</title>
   </head>
-  <body>
+  <body style="font-family:system-ui,Segoe UI,Arial;max-width:980px;margin:22px auto;padding:0 14px;">
     <h1>MineBot (Java)</h1>
-    <p>Сервер жив. Дальше сюда перенесём панель и управление ботом.</p>
-    <pre id="status">loading...</pre>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin:12px 0;">
+      <label>Хост<br><input id="host" style="width:220px"></label>
+      <label>Порт<br><input id="port" style="width:110px"></label>
+      <label>Ник<br><input id="user" style="width:180px"></label>
+      <label>Версия<br><input id="ver" style="width:150px" placeholder="auto/26.1.2"></label>
+      <label>Пароль<br><input id="pass" type="password" style="width:180px"></label>
+      <button id="save">Сохранить</button>
+      <button id="connect">Подключиться</button>
+      <button id="disconnect">Отключиться</button>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center;margin:8px 0;">
+      <b id="pill">—</b>
+      <span id="meta" style="color:#666"></span>
+    </div>
+    <div style="display:flex;gap:10px;margin:10px 0;">
+      <input id="chat" style="flex:1" placeholder="Команда или сообщение (enter)">
+      <button id="send">Отправить</button>
+    </div>
+    <div id="log" style="border:1px solid #ddd;border-radius:10px;padding:10px;height:420px;overflow:auto;background:#fafafa"></div>
+
     <script>
-      ;(async () => {
+      const logEl = document.getElementById('log')
+      const pill = document.getElementById('pill')
+      const meta = document.getElementById('meta')
+
+      const hostEl = document.getElementById('host')
+      const portEl = document.getElementById('port')
+      const userEl = document.getElementById('user')
+      const verEl = document.getElementById('ver')
+      const passEl = document.getElementById('pass')
+
+      const saveBtn = document.getElementById('save')
+      const connectBtn = document.getElementById('connect')
+      const disconnectBtn = document.getElementById('disconnect')
+
+      const chatEl = document.getElementById('chat')
+      const sendBtn = document.getElementById('send')
+
+      function addLine(level, message) {
+        const div = document.createElement('div')
+        div.textContent = message
+        div.style.whiteSpace = 'pre-wrap'
+        div.style.fontFamily = 'ui-monospace,Consolas,monospace'
+        div.style.fontSize = '12px'
+        div.style.padding = '2px 0'
+        div.style.color = level === 'error' ? '#b00020' : level === 'warn' ? '#8a6d00' : '#111'
+        logEl.appendChild(div)
+        logEl.scrollTop = logEl.scrollHeight
+      }
+
+      async function postJson(url, body) {
+        const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })
+        const j = await r.json().catch(() => ({}))
+        if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status))
+        return j
+      }
+
+      function renderStatus(s) {
+        meta.textContent = (s.host || '—') + ':' + (s.port || '—') + ' · ' + (s.username || '—') + ' · MC ' + (s.version || '—')
+        if (s.spawned) { pill.textContent = 'в мире'; pill.style.color = '#0a7' }
+        else if (s.connecting) { pill.textContent = 'подключение…'; pill.style.color = '#8a6d00' }
+        else if (s.connected) { pill.textContent = 'вход…'; pill.style.color = '#8a6d00' }
+        else { pill.textContent = 'бот готов'; pill.style.color = '#666' }
+      }
+
+      async function loadConfig() {
+        const c = await fetch('/api/config', { cache: 'no-store' }).then(r => r.json())
+        hostEl.value = c.host || ''
+        portEl.value = c.port != null ? String(c.port) : ''
+        userEl.value = c.username || ''
+        verEl.value = c.version || 'auto'
+      }
+
+      async function poll() {
         try {
-          const j = await fetch('/api/status', { cache: 'no-store' }).then(r => r.json())
-          document.getElementById('status').textContent = JSON.stringify(j, null, 2)
-        } catch (e) {
-          document.getElementById('status').textContent = String(e && e.message ? e.message : e)
-        }
-      })()
+          const s = await fetch('/api/status', { cache: 'no-store' }).then(r => r.json())
+          renderStatus(s)
+        } catch (e) {}
+      }
+
+      saveBtn.onclick = async () => {
+        await postJson('/api/config', { host: hostEl.value, port: parseInt(portEl.value || '25565', 10), username: userEl.value, version: verEl.value || 'auto', password: passEl.value })
+        passEl.value = ''
+        addLine('info', '[UI] Настройки сохранены')
+      }
+      connectBtn.onclick = async () => { await postJson('/api/connect'); addLine('info', '[UI] Подключаюсь…') }
+      disconnectBtn.onclick = async () => { await postJson('/api/disconnect'); addLine('info', '[UI] Отключаюсь…') }
+      sendBtn.onclick = async () => {
+        const t = (chatEl.value || '').trim()
+        if (!t) return
+        chatEl.value = ''
+        await postJson('/api/chat', { text: t })
+      }
+      chatEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendBtn.onclick() })
+
+      const es = new EventSource('/api/stream')
+      es.addEventListener('log', (ev) => {
+        try {
+          const j = JSON.parse(ev.data)
+          addLine(j.level || 'info', j.message || '')
+        } catch {}
+      })
+      es.addEventListener('status', (ev) => { try { renderStatus(JSON.parse(ev.data)) } catch {} })
+
+      loadConfig().then(poll)
+      setInterval(poll, 900)
     </script>
   </body>
 </html>

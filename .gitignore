@@ -6,3 +6,6 @@ dist/
 dist-tauri/
 *.log
 .DS_Store
+
+# Java server build outputs (do not commit)
+java-server/build/
