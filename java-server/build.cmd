@@ -8,7 +8,7 @@ set ROOT=%~dp0
 set SRC=%ROOT%src\main\java
 set RES=%ROOT%src\main\resources
 set OUT=%ROOT%build\classes
-set JAROUT=%ROOT%build\MineBotServer.jar
+set JAROUT=%ROOT%build\MineBot.jar
 
 if exist "%OUT%" rmdir /s /q "%OUT%"
 mkdir "%OUT%" >nul 2>&1

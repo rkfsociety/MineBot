@@ -11,8 +11,12 @@ final class AppPaths {
     if (appdata != null && !appdata.trim().isEmpty()) {
       return Path.of(appdata).resolve("MineBot");
     }
-    // fallback
-    return Path.of(".").resolve(".minebot-data");
+    // cross-platform fallback: ~/.minebot
+    String home = System.getProperty("user.home");
+    if (home != null && !home.trim().isEmpty()) {
+      return Path.of(home).resolve(".minebot");
+    }
+    return Path.of(".").resolve(".minebot");
   }
 
   static Path ensureDir(Path p) {
@@ -32,6 +36,10 @@ final class AppPaths {
 
   static Path logsDir() {
     return ensureDir(appRoot().resolve("logs"));
+  }
+
+  static Path appDir() {
+    return ensureDir(appRoot().resolve("app"));
   }
 }
 

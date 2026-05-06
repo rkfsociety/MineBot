@@ -22,7 +22,12 @@ public final class Main {
 
     // Simple health
     server.createContext("/api/status", ex -> {
-      send(ex, 200, "application/json; charset=utf-8", bot.statusJson(settings));
+      String st = bot.statusJson(settings);
+      // добавим версию сервиса в status (не полноценный JSON-парсер, поэтому просто расширяем объект)
+      String withVer = st.endsWith("}")
+        ? st.substring(0, st.length() - 1) + ",\"appVersion\":" + JsonMini.q(Version.VERSION) + "}"
+        : st;
+      send(ex, 200, "application/json; charset=utf-8", withVer);
     });
 
     server.createContext("/api/config", ex -> {

@@ -6,7 +6,7 @@
     <title>MineBot</title>
   </head>
   <body style="font-family:system-ui,Segoe UI,Arial;max-width:980px;margin:22px auto;padding:0 14px;">
-    <h1>MineBot (Java)</h1>
+    <h1>MineBot <span id="appver" style="font-size:14px;color:#666"></span></h1>
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin:12px 0;">
       <label>Хост<br><input id="host" style="width:220px"></label>
       <label>Порт<br><input id="port" style="width:110px"></label>
@@ -41,6 +41,7 @@
       const portEl = document.getElementById('port')
       const userEl = document.getElementById('user')
       const verEl = document.getElementById('ver')
+      const verBadge = document.getElementById('appver')
       const passEl = document.getElementById('pass')
 
       const saveBtn = document.getElementById('save')
@@ -75,6 +76,7 @@
 
       function renderStatus(s) {
         meta.textContent = (s.host || '—') + ':' + (s.port || '—') + ' · ' + (s.username || '—') + ' · MC ' + (s.version || '—')
+        if (s.appVersion) verBadge.textContent = 'v' + String(s.appVersion)
         if (s.spawned) { pill.textContent = 'в мире'; pill.style.color = '#0a7' }
         else if (s.connecting) { pill.textContent = 'подключение…'; pill.style.color = '#8a6d00' }
         else if (s.connected) { pill.textContent = 'вход…'; pill.style.color = '#8a6d00' }

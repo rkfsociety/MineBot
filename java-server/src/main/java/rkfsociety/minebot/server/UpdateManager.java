@@ -13,11 +13,11 @@ final class UpdateManager {
   private UpdateManager() {}
 
   static final String LATEST_RELEASE_API = "https://api.github.com/repos/rkfsociety/MineBot/releases/latest";
-  static final String SERVER_JAR_URL = "https://github.com/rkfsociety/MineBot/releases/latest/download/MineBotServer.jar";
+  static final String SERVER_JAR_URL = "https://github.com/rkfsociety/MineBot/releases/latest/download/MineBot.jar";
 
   static Path serverJarPath() {
-    // Лаунчер ожидает jar тут.
-    return AppPaths.ensureDir(AppPaths.appRoot().resolve("app")).resolve("MineBotServer.jar");
+    // Для пользователя это главный файл: MineBot.jar.
+    return AppPaths.appDir().resolve("MineBot.jar");
   }
 
   static String currentSha256OrNull(Path p) {
@@ -47,7 +47,7 @@ final class UpdateManager {
 
   static ApplyResult applyAndRelaunch(int port) {
     Path jarDst = serverJarPath();
-    Path tmp = jarDst.resolveSibling("MineBotServer.jar.download");
+    Path tmp = jarDst.resolveSibling("MineBot.jar.download");
     try {
       downloadTo(SERVER_JAR_URL, tmp);
       if (!Files.exists(tmp) || Files.size(tmp) < 50_000) {
