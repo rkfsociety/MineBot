@@ -118,16 +118,87 @@ fn append_log(app_root: &Path, line: &str) {
   }
 }
 
+fn ps_output(script: &str) -> Option<String> {
+  let out = Command::new("powershell.exe")
+    .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script])
+    .stdin(Stdio::null())
+    .stderr(Stdio::null())
+    .creation_flags(CREATE_NO_WINDOW)
+    .output()
+    .ok()?;
+  if !out.status.success() {
+    return None;
+  }
+  Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+fn kill_listeners_win32(ports: &[u16]) {
+  if ports.is_empty() {
+    return;
+  }
+  let list = ports
+    .iter()
+    .map(|p| p.to_string())
+    .collect::<Vec<_>>()
+    .join(",");
+  let script = format!(
+    "$ErrorActionPreference='SilentlyContinue'; \
+     $ports=@({list}); \
+     foreach($pt in $ports) {{ \
+       $lines=(netstat -ano | Select-String (':' + $pt) | Select-String 'LISTENING'); \
+       foreach($ln in $lines) {{ \
+         $pid=($ln.ToString() -split '\\\\s+')[-1]; \
+         if($pid -match '^\\\\d+$') {{ Stop-Process -Id ([int]$pid) -Force -ErrorAction SilentlyContinue }} \
+       }} \
+     }};"
+  );
+  let _ = ps_exec(&script);
+}
+
+fn ensure_server_latest(app_root: &Path) -> bool {
+  // Скачиваем jar из Releases. Если изменился — заменяем и просим рестарт.
+  let updates = app_root.join("updates");
+  ensure_dir(&updates);
+
+  let jar_dst = app_root.join("app").join("MineBotServer.jar");
+  let jar_tmp = updates.join("MineBotServer.jar.download");
+
+  let dst = jar_dst.to_string_lossy().replace('\'', "''");
+  let tmp = jar_tmp.to_string_lossy().replace('\'', "''");
+  let url = "https://github.com/rkfsociety/MineBot/releases/latest/download/MineBotServer.jar";
+
+  let script = format!(
+    "$ErrorActionPreference='Stop'; \
+     $tmp='{tmp}'; $dst='{dst}'; \
+     Invoke-WebRequest -UseBasicParsing -Uri '{url}' -OutFile $tmp; \
+     $new=(Get-FileHash -Algorithm SHA256 -Path $tmp).Hash; \
+     $old=''; if (Test-Path $dst) {{ $old=(Get-FileHash -Algorithm SHA256 -Path $dst).Hash }}; \
+     if ($old -ne $new) {{ \
+       if (!(Test-Path (Split-Path -Parent $dst))) {{ New-Item -ItemType Directory -Force (Split-Path -Parent $dst) | Out-Null }}; \
+       Move-Item -Force $tmp $dst; \
+       Write-Output 'updated'; \
+     }} else {{ Remove-Item -Force $tmp; Write-Output 'same'; }}"
+  );
+
+  match ps_output(&script).as_deref() {
+    Some("updated") => {
+      append_log(app_root, "ensure_server_latest: updated MineBotServer.jar");
+      true
+    }
+    Some("same") => false,
+    _ => {
+      append_log(app_root, "ensure_server_latest: download failed");
+      false
+    }
+  }
+}
+
 fn ensure_app_latest(app_root: &Path) {
   // Минимальная логика: если app/ отсутствует — качаем main.zip и распаковываем.
   // Дальше обновлением будет заниматься панель/раннер (в AppData), без перекомпиляции Tauri.
   let app_dir = app_root.join("app");
-  if app_dir
-    .join("java-server")
-    .join("build")
-    .join("MineBotServer.jar")
-    .exists()
-  {
+  // Новый режим: серверный jar лежит в app/MineBotServer.jar (обновляется из Releases).
+  if app_dir.join("MineBotServer.jar").exists() {
     return;
   }
 
@@ -171,11 +242,7 @@ fn start_java_server(app_root: &Path, system_java: &Option<PathBuf>) {
     None => return,
   };
 
-  let jar = app_root
-    .join("app")
-    .join("java-server")
-    .join("build")
-    .join("MineBotServer.jar");
+  let jar = app_root.join("app").join("MineBotServer.jar");
   if !jar.exists() {
     append_log(app_root, "start_java_server: MineBotServer.jar missing");
     return;
@@ -233,7 +300,13 @@ fn main() {
       let app_root_bg = app_root.clone();
       let system_java_bg = system_java.clone();
       thread::spawn(move || {
+        // 1) Гарантируем, что код есть (fallback: main.zip)
         ensure_app_latest(&app_root_bg);
+        // 2) Обновляем серверный jar из Releases и рестартим, если изменился.
+        let updated = ensure_server_latest(&app_root_bg);
+        if updated {
+          kill_listeners_win32(&[3847]);
+        }
         start_java_server(&app_root_bg, &system_java_bg);
 
         // Дадим серверу пару секунд поднять панель, чтобы splash быстрее переключился.
