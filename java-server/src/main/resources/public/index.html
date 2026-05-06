@@ -17,6 +17,11 @@
       <button id="connect">Подключиться</button>
       <button id="disconnect">Отключиться</button>
     </div>
+    <div style="display:flex;gap:10px;align-items:center;margin:8px 0;">
+      <button id="updCheck">Проверить обновления</button>
+      <button id="updApply" disabled>Обновить и перезапустить</button>
+      <span id="updMeta" style="color:#666"></span>
+    </div>
     <div style="display:flex;gap:12px;align-items:center;margin:8px 0;">
       <b id="pill">—</b>
       <span id="meta" style="color:#666"></span>
@@ -41,6 +46,10 @@
       const saveBtn = document.getElementById('save')
       const connectBtn = document.getElementById('connect')
       const disconnectBtn = document.getElementById('disconnect')
+
+      const updCheckBtn = document.getElementById('updCheck')
+      const updApplyBtn = document.getElementById('updApply')
+      const updMeta = document.getElementById('updMeta')
 
       const chatEl = document.getElementById('chat')
       const sendBtn = document.getElementById('send')
@@ -88,6 +97,61 @@
         } catch (e) {}
       }
 
+      async function checkUpdates() {
+        updCheckBtn.disabled = true
+        updApplyBtn.disabled = true
+        updMeta.textContent = 'проверяю…'
+        try {
+          const j = await fetch('/api/update/check', { cache: 'no-store' }).then(r => r.json())
+          const tag = j.latestTag ? String(j.latestTag) : ''
+          updMeta.textContent = tag ? ('последний релиз: ' + tag) : 'релиз не найден'
+          // Если релиз найден — даём кнопку обновления (она скачает jar и перезапустит сервер)
+          if (tag) {
+            updApplyBtn.disabled = false
+            updApplyBtn.style.background = '#0a7'
+            updApplyBtn.style.color = '#fff'
+          }
+        } catch (e) {
+          updMeta.textContent = 'ошибка проверки'
+          addLine('error', '[UI] Ошибка проверки обновлений: ' + String(e && e.message ? e.message : e))
+        } finally {
+          updCheckBtn.disabled = false
+        }
+      }
+
+      updCheckBtn.onclick = () => checkUpdates()
+      updApplyBtn.onclick = async () => {
+        updApplyBtn.disabled = true
+        updMeta.textContent = 'обновляю…'
+        try {
+          const j = await postJson('/api/update/apply', {})
+          if (j.updated) {
+            addLine('info', '[UI] Обновление установлено, перезапускаюсь…')
+          } else {
+            addLine('info', '[UI] Обновление не требуется.')
+          }
+          // сервер сам перезапустится; просто ждём и перезагружаем страницу
+          const startedAt = Date.now()
+          const timer = setInterval(async () => {
+            if (Date.now() - startedAt > 20000) {
+              clearInterval(timer)
+              updMeta.textContent = 'долго перезапускается, обнови страницу (F5)'
+              return
+            }
+            try {
+              const r = await fetch('/api/status', { cache: 'no-store' })
+              if (r.ok) {
+                clearInterval(timer)
+                location.reload()
+              }
+            } catch (_) {}
+          }, 450)
+        } catch (e) {
+          updMeta.textContent = 'ошибка обновления'
+          addLine('error', '[UI] Ошибка обновления: ' + String(e && e.message ? e.message : e))
+        }
+      }
+
       saveBtn.onclick = async () => {
         await postJson('/api/config', { host: hostEl.value, port: parseInt(portEl.value || '25565', 10), username: userEl.value, version: verEl.value || 'auto', password: passEl.value })
         addLine('info', '[UI] Настройки сохранены')
@@ -113,6 +177,7 @@
 
       loadConfig().then(poll)
       setInterval(poll, 900)
+      checkUpdates()
     </script>
   </body>
 </html>

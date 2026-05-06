@@ -93,6 +93,37 @@ public final class Main {
 
     server.createContext("/api/stream", sse::handleStream);
 
+    server.createContext("/api/update/check", ex -> {
+      if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
+        send(ex, 405, "application/json; charset=utf-8", "{\"ok\":false,\"error\":\"method_not_allowed\"}");
+        return;
+      }
+      var r = UpdateManager.check();
+      String body =
+        "{"
+          + "\"ok\":" + r.ok()
+          + ",\"jarPath\":" + JsonMini.q(r.jarPath())
+          + ",\"sha256\":" + (r.sha256() == null ? "null" : JsonMini.q(r.sha256()))
+          + ",\"latestTag\":" + (r.latestTag() == null ? "null" : JsonMini.q(r.latestTag()))
+          + "}";
+      send(ex, 200, "application/json; charset=utf-8", body);
+    });
+
+    server.createContext("/api/update/apply", ex -> {
+      if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+        send(ex, 405, "application/json; charset=utf-8", "{\"ok\":false,\"error\":\"method_not_allowed\"}");
+        return;
+      }
+      var r = UpdateManager.applyAndRelaunch(port);
+      String body =
+        "{"
+          + "\"ok\":" + r.ok()
+          + ",\"updated\":" + (r.updated() == null ? "null" : r.updated())
+          + (r.error() == null ? "" : ",\"error\":" + JsonMini.q(r.error()))
+          + "}";
+      send(ex, 200, "application/json; charset=utf-8", body);
+    });
+
     // Serve embedded UI
     server.createContext("/home", ex -> {
       try {
